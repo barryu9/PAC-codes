@@ -48,23 +48,23 @@ classdef paccode
             bit=abs(bitStr)-48;
             RM_score=sum(bit,2);
             [~, sorted_indices]=sort(RM_score,'ascend');
-            info_indices=sorted_indices(end-obj.k+1:end);
+            info_indices=sort(sorted_indices(end-obj.k+1:end),'ascend');
         end
 
-        function x = encode(obj,d)
-            if(length(d)~=obj.k)
+        function x = encode(obj,u)
+            if(length(u)~=obj.k)
                 error('The length of the input d is not equal to k.')
             end
             % Rate Profile
             v=zeros(1,obj.N);
-            v(obj.rate_profiling)=d;
+            v(obj.rate_profiling) = u;
             % convolutional encoder
             u=mod(v*obj.T,2);
             % Polar Encoding
-            x=mod(u*obj.GN,2);
+            x=mod(u*obj.GN,2)';
         end
 
-        function polar_info_esti = SCL_decoder(obj,llr, L)%2018.1.7.14:16 Yu Y. R.
+        function polar_info_esti = SCL_decoder(obj,llr, L)
             %LLR-based SCL deocoder, a single function, no other sub-functions.
             %Frequently calling sub-functions will derease the efficiency of MATLAB
             %codes.
@@ -185,12 +185,12 @@ classdef paccode
                         path_state = compare(1, l_index) * 2 + compare(2, l_index);
                         switch path_state%path_state can equal to 0, but in this case we do no operation.
                             case 1 % PM of the second row is lower
-                                u(cnt_u, l_index) = u_right(l_index);
+                                u(cnt_u, l_index) = 1;
                                 C(1, 2 * l_index - 1 + phi_mod_2) = u_right(l_index);
                                 PM(l_index) = PM_pair(2, l_index);
                                 curr_state(:,l_index) = curr_state_temp(:,l_index);
                             case 2 % PM of the first row is lower
-                                u(cnt_u, l_index) = u_left(l_index);
+                                u(cnt_u, l_index) = 0;
                                 C(1, 2 * l_index - 1 + phi_mod_2) = u_left(l_index);
                                 PM(l_index) = PM_pair(1, l_index);
                             case 3 %
@@ -202,8 +202,8 @@ classdef paccode
                                 u(:, index) = u(:, l_index);
                                 curr_state(:,index) = curr_state_temp(:,l_index);
 
-                                u(cnt_u, l_index) = u_left(l_index);
-                                u(cnt_u, index) = u_right(l_index);
+                                u(cnt_u, l_index) = 0;
+                                u(cnt_u, index) = 1;
                                 C(1, 2 * l_index - 1 + phi_mod_2) = u_left(l_index);
                                 C(1, 2 * index - 1 + phi_mod_2) = u_right(l_index);
                                 PM(l_index) = PM_pair(1, l_index);
@@ -259,9 +259,12 @@ classdef paccode
                 end
             end
             %path selection.
-            [~, path_ordered] = sort(PM);
+            activepath=logical(activepath);
+            PM_active = PM(activepath);
+            u_active = u(:,activepath);
+            [~, path_ordered] = sort(PM_active);
 
-            polar_info_esti = u(:, path_ordered(1));
+            polar_info_esti = u_active(:, path_ordered(1));
         end
     end
 end

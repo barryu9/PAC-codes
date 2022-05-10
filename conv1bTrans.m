@@ -5,5 +5,5 @@ for j=2:length(c)
         u=mod(u+curr_state(j-1),2);
     end
 end
-next_state=[v,curr_state(1:end-1)];
+next_state=[v;curr_state(1:end-1)];
 end
