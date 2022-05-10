@@ -10,15 +10,14 @@ classdef paccode
         conv_depth %卷积深度
         GN %极化矩阵
         T %卷积矩阵
-        lambda_offset
-        llr_layer_vec
-        bit_layer_vec
+        lambda_offset %列表译码相关参数-'分段向量'
+        llr_layer_vec %列表译码相关参数-'实际LLR计算执行层数'
+        bit_layer_vec %列表译码相关参数-'实际比特返回层数'
     end
 
     methods
-        function obj = paccode(N,k,g,rate_profiling)
+        function obj = paccode(N,k,g,rate_profiling,varargin)
             %PACCODE 构造此类的实例
-            %   此处显示详细说明
             n=ceil(log2(N));
             N=2^n;
             obj.N = N;
@@ -29,6 +28,15 @@ classdef paccode
             obj.conv_depth = length(g);
             if(rate_profiling=='RM')
                 obj.rate_profiling = RM_rate_profiling(obj);
+            elseif(rate_profiling=='GA')
+                if(size(varargin,2)>0)
+                    sigma = varargin{1};
+                    [channels, ~] = GA(sigma, N);
+                    [~, channel_ordered] = sort(channels, 'descend');
+                    obj.rate_profiling = sort(channel_ordered(1 : k), 'ascend');
+                else
+                    error('You should input the design snr.')
+                end
             else
                 error('Cannot find this rate profiling method.')
             end
@@ -268,4 +276,5 @@ classdef paccode
         end
     end
 end
+
 
