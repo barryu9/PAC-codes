@@ -76,9 +76,7 @@ classdef paccode
             llr_layer_vec = obj.llr_layer_vec;
             bit_layer_vec = obj.bit_layer_vec;
             lambda_offset = obj.lambda_offset;
-            frozen_bits = ones(1,N);
-            frozen_bits(obj.rate_profiling) = 0;
-
+            frozen_bits = 1 - obj.rate_profiling;
             %memory declared
             lazy_copy = zeros(n, L);%If Lazy Copy is used, there is no data-copy in the decoding process. We only need to record where the data come from. Here,data refer to LLRs and partial sums.
             %Lazy Copy is a relatively sophisticated operation for new learners of polar codes. If you do not understand such operation, you can directly copy data.
@@ -96,9 +94,7 @@ classdef paccode
             %decoding starts
             %default: in the case of path clone, the origianl path always corresponds to bit 0, while the new path bit 1.
             curr_state = zeros(obj.conv_depth-1, L);
-            curr_state_temp = zeros(obj.conv_depth-1, L);
-            u_left=zeros(1,L);
-            u_right=zeros(1,L);
+            curr_state_temp = = zeros(obj.conv_depth-1, L);
             for phi = 0 : N - 1
                 layer = llr_layer_vec(phi + 1);
                 phi_mod_2 = mod(phi, 2);
@@ -154,13 +150,15 @@ classdef paccode
                 end
                 if frozen_bits(phi + 1) == 0%if now we decode an unfrozen bit
                     PM_pair = realmax * ones(2, L);
+                    u_left=zeros(1,L);
+                    u_right=zeros(1,L);
                     for l_index = 1 : L
                         if activepath(l_index) == 0
                             continue;
                         end
                         curr_state_temp(:,l_index) = curr_state(:,l_index);
                         [u_left(l_index),curr_state(:,l_index)] = conv1bTrans(0,curr_state(:,l_index),g);
-                        [u_right(l_index),curr_state_temp(:,l_index)] = conv1bTrans(1,curr_state_temp(:,l_index),g);
+                        [u_right(l_index),curr_state_temp] = conv1bTrans(1,curr_state_temp(:,l_index),g);
                         PM_pair(1, l_index) = calc_PM(PM(l_index),P(1, l_index),u_left(l_index));
                         PM_pair(2, l_index) = calc_PM(PM(l_index),P(1, l_index),u_right(l_index));
                     end
@@ -193,21 +191,20 @@ classdef paccode
                                 u(cnt_u, l_index) = u_left(l_index);
                                 C(1, 2 * l_index - 1 + phi_mod_2) = u_left(l_index);
                                 PM(l_index) = PM_pair(1, l_index);
-                            case 3 %
+                            case 3 %Path Killed
                                 index = kill_index(kill_cnt);
                                 kill_cnt = kill_cnt - 1;%pop stack
                                 activepath(index) = 1;
                                 %lazy copy
                                 lazy_copy(:, index) = lazy_copy(:, l_index);
                                 u(:, index) = u(:, l_index);
-                                curr_state(:,index) = curr_state_temp(:,l_index);
-
                                 u(cnt_u, l_index) = u_left(l_index);
                                 u(cnt_u, index) = u_right(l_index);
                                 C(1, 2 * l_index - 1 + phi_mod_2) = u_left(l_index);
                                 C(1, 2 * index - 1 + phi_mod_2) = u_right(l_index);
                                 PM(l_index) = PM_pair(1, l_index);
                                 PM(index) = PM_pair(2, l_index);
+                                cur
                         end
                     end
                     cnt_u = cnt_u + 1;

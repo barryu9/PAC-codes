@@ -1,4 +1,4 @@
-function P = get_P(N)
+function P = get_GN(N)
 F = [1, 0 ; 1, 1];
 P = zeros(N, N);
 P(1 : 2, 1 : 2) = F;
