@@ -30,12 +30,13 @@ classdef paccode
                 obj.rate_profiling = RM_rate_profiling(obj);
             elseif(rate_profiling=='GA')
                 if(size(varargin,2)>0)
-                    sigma = varargin{1};
+                    dsnr = varargin{1};
+                    sigma = 1/sqrt(2 * obj.R) * 10^(-dsnr/20);
                     [channels, ~] = GA(sigma, N);
                     [~, channel_ordered] = sort(channels, 'descend');
                     obj.rate_profiling = sort(channel_ordered(1 : k), 'ascend');
                 else
-                    error('You should input the design snr.')
+                    error('You should input the design snr(dB).')
                 end
             else
                 error('Cannot find this rate profiling method.')
