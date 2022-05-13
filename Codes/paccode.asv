@@ -153,12 +153,12 @@ classdef paccode
                         switch path_state%path_state can equal to 0, but in this case we do no operation.
                             case 1 % PM of the second row is lower
                                 u(cnt_u, l_index) = 1;
-                                C(:,2*l_index-1:2*l_index)=update_C(obj,phi,C(:,2*l_index-1:2*l_index),u_right(l_index));
+                                C(1, 2 * l_index - 1 + phi_mod_2) = u_right(l_index);
                                 PM(l_index) = PM_pair(2, l_index);
                                 curr_state(:,l_index) = curr_state_temp(:,l_index);
                             case 2 % PM of the first row is lower
                                 u(cnt_u, l_index) = 0;
-                                C(:,2*l_index-1:2*l_index)=update_C(obj,phi,C(:,2*l_index-1:2*l_index),u_left(l_index));
+                                C(1, 2 * l_index - 1 + phi_mod_2) = u_left(l_index);
                                 PM(l_index) = PM_pair(1, l_index);
                             case 3 %
                                 index = kill_index(kill_cnt);
@@ -169,10 +169,11 @@ classdef paccode
                                 P(:, index) = P(:, l_index);
                                 u(:, index) = u(:, l_index);
                                 curr_state(:,index) = curr_state_temp(:,l_index);
+
                                 u(cnt_u, l_index) = 0;
                                 u(cnt_u, index) = 1;
-                                C(:,2*l_index-1:2*l_index)=update_C(obj,phi,C(:,2*l_index-1:2*l_index),u_left(l_index));
-                                C(:,2*index-1:2*index)=update_C(obj,phi,C(:,2*index-1:2*index),u_right(l_index));
+                                C(1, 2 * l_index - 1 + phi_mod_2) = u_left(l_index);
+                                C(1, 2 * index - 1 + phi_mod_2) = u_right(l_index);
                                 PM(l_index) = PM_pair(1, l_index);
                                 PM(index) = PM_pair(2, l_index);
                         end
@@ -186,11 +187,16 @@ classdef paccode
                         [u_temp,curr_state(:,l_index)] = conv1bTrans(0,curr_state(:,l_index),g);
                         PM(l_index)=calc_PM(PM(l_index),P(1, l_index),u_temp);
 
-                        C(:,2*l_index-1:2*l_index)=update_C(obj,phi,C(:,2*l_index-1:2*l_index),u_temp);
+                    C(:,2*l_index-1:2*l_index)=update_C(obj,phi,C(:,2*l_index-1:2*l_index),u_);
 
                     end
                 end
 
+                for l_index = 1 : L%partial-sum return
+                    if activepath(l_index) == 0
+                        continue
+                    end
+                end
 
             end
             %path selection.
@@ -206,7 +212,6 @@ classdef paccode
 
 
         end
-
         function P = update_P(obj,phi,P,C,llr)
             if(phi == 0 && ~exist('llr'))
                 error("Need channel LLR to update P.")
@@ -271,7 +276,8 @@ classdef paccode
             bit_layer_vec=obj.bit_layer_vec;
             lambda_offset=obj.lambda_offset;
             phi_mod_2 = mod(phi, 2);
-            C(1, 1+phi_mod_2) = u;
+            C(1, 1 + phi_mod_2) = u;
+
             if (phi_mod_2  == 1) && (phi ~= N - 1)
                 layer = bit_layer_vec(phi + 1);
                 for i_layer = 0 : layer - 1

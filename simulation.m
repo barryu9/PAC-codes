@@ -4,7 +4,7 @@ addpath(genpath('Codes/'))
 N = 512;
 k = 256;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
-snr_dB = 0:0.25:3;
+snr_dB = 3;
 pac = paccode(N,k,g,'GA',2);
 n_iter=1e5;
 frame_errors_count=zeros(1,length(snr_dB));
@@ -13,7 +13,7 @@ FER=zeros(1,length(snr_dB));
 BER=zeros(1,length(snr_dB));
 L=256;
 
-parfor i=1:length(snr_dB)
+for i=1:length(snr_dB)
     for ii = 1:n_iter
         u= double(rand(k,1)>0.5);
         x = pac.encode(u);
