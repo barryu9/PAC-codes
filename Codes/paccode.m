@@ -66,6 +66,16 @@ classdef paccode
             info_indices = sort(channel_ordered(1 : obj.k), 'ascend');
         end
 
+        function [Pe] = get_PE(obj,dsnr)
+            %GET_PE 此处显示有关此函数的摘要
+            %   此处显示详细说明
+            sigma = 1/sqrt(2 * obj.R) * 10^(-dsnr/20);
+            [channels, ~] = GA(sigma, obj.N);
+            Pe = 1/2 * erfc(0.5*sqrt(channels));
+        end
+
+
+
         function x = encode(obj,u)
             if(length(u)~=obj.k)
                 error('The length of the input d is not equal to k.')
@@ -207,7 +217,7 @@ classdef paccode
             c_state=zeros(obj.conv_depth-1,1);
             c_state_left=zeros(obj.conv_depth-1,1);
             c_state_right=zeros(obj.conv_depth-1,1);
-            Curr_State=zeros(obj.conv_depth-1,obj.k); %0~k-1,1:|g|-1;
+            curr_state=zeros(obj.conv_depth-1,obj.k); %0~k-1,1:|g|-1;
             i=0;
             j=0;
             T=0;
@@ -227,7 +237,9 @@ classdef paccode
             miu=zeros(N,1);
             miuu=zeros(N,1);
             miuuu=zeros(N,1);
-
+            j=0;
+            jj=0;
+            j_stem=0;
             P = zeros(N - 1, 1);
             C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             u_esti = zeros(N,1);
@@ -267,13 +279,13 @@ classdef paccode
 
                     if onMainPath==true && isBackTracking == true
                         if miu_min>T && CS(j+1)==1 && j<j_end
-                            onMainPath=False;
+                            onMainPath=false;
                             delta_s(j+1)=1;
                             j_stem=j;
                             P_s = P;
                             C_s = C;
                         elseif j==j_end
-                            isBackTracking = False;
+                            isBackTracking = false;
                             T = floor(miu_end/delta)*delta;
                         end
                     end
@@ -330,28 +342,28 @@ classdef paccode
                                     miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log(1-pe(1:info_set(j+1)))));
                                 end
                             end
-                            curr_state(j+1) = c_state;
-                            if onMainPath == False
+                            curr_state(:,j+1) = c_state;
+                            if onMainPath == false
                                 if miuuu(info_set(j_stem+1)) < miu_max
                                     miuuu(info_set(j_stem+1)) = miu_max
                                 end
                             else
                                 j_end = j;
                                 miu_end = miu_max;
-                                frmMAINpath = True;
-                                isBackTracking = True;
+                                frmMAINpath = true;
+                                isBackTracking = true;
                             end
                             %% Moving Back
-                            isMovingBack = False;
-                            breaknreturn = False;
-                            while True
+                            isMovingBack = false;
+                            breaknreturn = false;
+                            while true
                                 jj=j;
-                                if frmMAINpath == True
+                                if frmMAINpath == true
                                     for k=0:jj-1
                                         if miuu(info_set(k+1))>T && CS(k+1)==1
                                             jj=k;
                                             j_stem=k;
-                                            isMovingBack=True;
+                                            isMovingBack=true;
                                             P_s = P;
                                             C_s = C;
                                             break;
@@ -359,7 +371,7 @@ classdef paccode
                                     end
 
                                     if jj==j
-                                        toDiverge = False
+                                        toDiverge = false;
                                         break;
                                     end
                                 else
@@ -368,17 +380,17 @@ classdef paccode
                                             jj=k;
                                             P=P_s;
                                             C=C_s;
-                                            toDiverge=False;
-                                            breaknreturn = True;
+                                            toDiverge=false;
+                                            breaknreturn = true;
                                             break;
                                         end
-                                        if miuu(info_set(k+1)) > T && CS[k+1] == 1
+                                        if miuu(info_set(k+1)) > T && CS(k+1) == 1
                                             if sum(delta(1:k+1))>= maxDiversions
                                                 continue;
                                             end
                                             if(delta(k+1)==1)
                                                 jj=k;
-                                                isMovingBack=True;
+                                                isMovingBack=true;
                                                 break;
                                             end
                                         end
@@ -404,15 +416,15 @@ classdef paccode
                             end
 
                             % Moving Back
-                            if toDiverge == False && (jj == j_stem || jj==j)
-                                onMainPath = True;
+                            if toDiverge == false && (jj == j_stem || jj==j)
+                                onMainPath = true;
                             else
-                                onMainPath = False;
+                                onMainPath = false;
                             end
                             i = info_set(jj+1);
                             j=jj;
-                            frmMAINpath=False;
-                            c_state =curr_state(j+1);
+                            frmMAINpath=false;
+                            c_state =curr_state(:,j+1);
 
                         end
 

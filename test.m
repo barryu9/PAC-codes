@@ -1,10 +1,10 @@
 clear
 addpath(genpath('Codes/'))
 
-N = 8;
-k = 4;
+N = 128;
+k = 64;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
-snr_dB = 1;
+snr_dB = 3;
 pac = paccode(N,k,g,'GA',2);
 
 
@@ -17,6 +17,6 @@ bpsk = 1 - 2 * x;
 noise = randn(N, 1);
 y = bpsk + sigma * noise;
 llr = 2/sigma^2*y;
-Pe=[0.99,0.99,0.99,0.01,0.99,0.01,0.01,0.01];
-d= pac.Fano_decoder(llr,Pe,1,2,4,4)
-u
+Pe=pac.get_PE(3);
+d= pac.Fano_decoder(llr,Pe,1,2,38,4)
+sum(sum(u~=d))
