@@ -11,7 +11,7 @@ frame_errors_count=zeros(1,length(snr_dB));
 bit_errors_count=zeros(1,length(snr_dB));
 FER=zeros(1,length(snr_dB));
 BER=zeros(1,length(snr_dB));
-L=256;
+L=1;
 
 for i=1:length(snr_dB)
     for ii = 1:n_iter

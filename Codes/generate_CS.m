@@ -1,4 +1,4 @@
-function CS = generate_CS(rate_profiling,n)
+function CS_logical = generate_CS(rate_profiling,n)
     info_bits = zeros(1,2^n);
     info_bits(rate_profiling)=1;
     info_bits=logical(info_bits);
@@ -35,5 +35,9 @@ function CS = generate_CS(rate_profiling,n)
             end
         end
     end
+
+    CS_logical = zeros(1,2^n);
+    CS_logical(CS) = 1;
+    
 end
 

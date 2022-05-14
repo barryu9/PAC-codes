@@ -202,10 +202,253 @@ classdef paccode
             u_esti = u_active(:, path_ordered(1));
         end
 
-        function u_esti = Fano_decoder(obj,llr,pe,delta,i_bu)
+        function d_esti = Fano_decoder(obj,llr,pe,delta,delta_q,i_bu,maxDiversions)
+            CS=generate_CS(obj.rate_profiling,obj.n);
+            c_state=zeros(obj.conv_depth-1,1);
+            c_state_left=zeros(obj.conv_depth-1,1);
+            c_state_right=zeros(obj.conv_depth-1,1);
+            Curr_State=zeros(obj.conv_depth-1,obj.k); %0~k-1,1:|g|-1;
+            i=0;
+            j=0;
+            T=0;
+            N=obj.N;
+            n=obj.n;
+            B=sum(log2(1-pe));
+            bminus1=sum(log2(1-pe));
+            alphaq=1;
+            onMainPath=true;
+            isBackTracking=false;
+            toDiverge=false;
+            biasUpdated=false;
+            frozen_bits = ones(1,N);
+            frozen_bits(obj.rate_profiling) = 0;
+            info_set = obj.rate_profiling;
+            P = zeros(N - 1, 1)
+            C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
+            u_esti = zeros(N,1);
+            v = zeros(N,1);
+            while i < N
+                P = update_P(obj,i,P,C,llr);
+                if frozen_bits(i+1) == 1
+                    [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
+                    if i==0
+                        miu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log(1-pe(j+1));
+                    else
+                        miu(i+1) =  miu(i) + m_func(P(1),u_esti(i+1))-alphaq*log(1-pe(j+1));
+                    end
+                    C = update_C(obj,i,C,u_esti(i+1));
+                    i = i + 1;
+                else
+                    [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
+                    [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
+                    if i==0
+                        miu_left =  B + m_func(P(1),u_left)-alphaq*log(1-pe(j+1));
+                        miu_right =  B + m_func(P(1),u_right)-alphaq*log(1-pe(j+1));
+                    else
+                        miu_left =  miu(i) + m_func(P(1),u_left)-alphaq*log(1-pe(j+1));
+                        miu_right =  miu(i) + m_func(P(1),u_right)-alphaq*log(1-pe(j+1));
+                    end
+                    if miu_left>miu_right
+                        miu_max = miu_left;
+                        miu_min = miu_right;
+                        v_max = 0;
+                        v_min = 1;
+                    else
+                        miu_max = miu_right;
+                        miu_min = miu_left;
+                        v_max = 1;
+                        v_min = 0;
+                    end
 
+                    if onMainPath==true && isBackTracking == true
+                        if miu_min>T && CS(j+1)==1 && j<j_end
+                            onMainPath=False;
+                            delta_s(j+1)=1;
+                            j_stem=j;
+                            P_s = P;
+                            C_s = C;
+                        elseif j==j_end
+                            isBackTracking = False;
+                            T = floor(miu_end/delta)*delta;
+                        end
+                    end
+
+                    if miu_max > T
+                        if toDiverge == False
+                            v(i+1)=v_max;
+                            if v_max == 0
+                                u_esti(i+1)=u_left;
+                            else
+                                u_esti(i+1)=u_right;
+                            end
+                            if onMainPath == True && delta_s(j+1)==1
+                                miu(i+1)=miu_max;
+                                miuu(i+1)=miu_min;
+                            else
+                                miu(i+1)=miu_max;
+                                miuu(i+1)=miuuu(i+1);
+                            end
+                            delta(j+1)=0;
+                        else
+                            v(i+1)=v_min;
+                            if v_min == 0
+                                u_esti(i+1)=u_left;
+                            else
+                                u_esti(i+1)=u_right;
+                            end
+                            miu(i+1)=miu_min;
+                            miuu(i+1)=miu_max;
+                            delta(j+1)=1;
+                            toDiverge=False;
+                        end
+                        curr_state(:,j+1)=c_state;
+                        if v(i+1)==0
+                            c_state=c_state_left;
+                        else
+                            c_state=c_state_right;
+                        end
+                        C = update_C(i,u_esti(i+1),C);
+                        i = i+1;
+                        j = j+1;
+                    else
+                        if biasUpdated == false && i<i_bu
+                            T=floor(miu_max/delta)*delta;
+                        else
+                            if biasUpdated == false && i==i_bu
+                                if miu_max < B
+                                    alphaq=ceil(miu_max/(B*delta_q))*delta_q;
+                                    biasUpdated = true;
+                                    for k=0:j
+                                        miuu(info_set(k+1))=miuu(info_set(k+1))+(alphaq-1)*(B-sum(log(1-pe(1:info_set(k+1)+1))));
+                                    end
+                                    miu(info_set(1)-1) = miu(info_set(1)-1) +  (alphaq-1)*(B-sum(log(1-pe(1:info_set(1)))));
+                                    miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log(1-pe(1:info_set(j+1)))));
+                                end
+                            end
+                            curr_state(j+1) = c_state;
+                            if onMainPath == False
+                                if miuuu(info_set(j_stem+1)) < miu_max
+                                    miuuu(info_set(j_stem+1)) = miu_max
+                                end
+                            else
+                                j_end = j;
+                                miu_end = miu_max;
+                                frmMAINpath = True;
+                                isBackTracking = True;
+                            end
+                            %% Moving Back
+                            isMovingBack = False;
+                            breaknreturn = False;
+                            while True
+                                jj=j;
+                                if frmMAINpath == True
+                                    for k=0:jj-1
+                                        if miuu(info_set(k+1))>T && CS(k+1)==1
+                                            jj=k;
+                                            j_stem=k;
+                                            isMovingBack=True;
+                                            P_s = P;
+                                            C_s = C;
+                                            break;
+                                        end
+                                    end
+
+                                    if jj==j
+                                        toDiverge = False
+                                        break;
+                                    end
+                                else
+                                    for k = jj-1 : -1 : 0
+                                        if j_stem == k
+                                            jj=k;
+                                            P=P_s;
+                                            C=C_s;
+                                            toDiverge=False;
+                                            breaknreturn = True;
+                                            break;
+                                        end
+                                        if miuu(info_set(k+1)) > T && CS[k+1] == 1
+                                            if sum(delta(1:k+1))>= maxDiversions
+                                                continue;
+                                            end
+                                            if(delta(k+1)==1)
+                                                jj=k;
+                                                isMovingBack=True;
+                                                break;
+                                            end
+                                        end
+                                    end
+                                end
+
+                                if isMovingBack == True
+                                    i_cur=info_set(j+1)-1;
+                                    i_start = info_set(jj)-1;
+                                    [P,C]=updateLLRsPSs(i_start,i_cur,u_esti,P,C);
+                                    if(delta(jj)==0)
+                                        toDiverge = True;
+                                        break;
+                                    elseif jj==0
+                                        toDiverge=False;
+                                        break;
+                                    end
+                                end
+
+                                if breaknreturn
+                                    break;
+                                end
+                            end
+
+                            % Moving Back
+                            if toDiverge == False && (jj == j_stem || jj==j)
+                                onMainPath = True;
+                            else
+                                onMainPath = False;
+                            end
+                            i = info_set(jj+1);
+                            j=jj;
+                            frmMAINpath=False;
+                            c_state =curr_state(j+1);
+
+                        end
+
+
+                    end
+
+                end
+            end
+            d_esti = v(info_set);
 
         end
+
+        function [P,C]=updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C)
+            if mod(i_cur,2) ~= 0
+                i_cur=i_cur-1;
+            end
+            if mod(i_start,2) ~= 0
+                i_start=i_start-1;
+            end
+            s_start = ffs(i_start);
+            s_max = smax(i_start,i_cur);
+
+            if s_start<=s_max
+                i_minus1 = find_sMaxPos(s_start,s_max,i_start);
+                C = updatePSBack(i_minus1,s_max,u_esti);
+                for i = i_minus1 : i_start
+                    P = update_P(obj,i,P,C);
+                    C = update_C(obj,i,C,u_esti(i+1));
+                end
+            else
+                P = update_P(obj,i_start,P,C);
+            end
+        end
+
+        function C = updatePSBack(obj,i_minus1,s_max,u_esti)
+            k=2^s_max;
+            for i = i_minus1 + 1 - k : i_minus1
+                C = update_C(obj,i,C,u_esti(i+1));
+            end
+        end
+
 
         function P = update_P(obj,phi,P,C,llr)
             if(phi == 0 && ~exist('llr'))
