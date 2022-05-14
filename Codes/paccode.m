@@ -223,7 +223,12 @@ classdef paccode
             frozen_bits = ones(1,N);
             frozen_bits(obj.rate_profiling) = 0;
             info_set = obj.rate_profiling;
-            P = zeros(N - 1, 1)
+            delta_s=zeros(N,1);
+            miu=zeros(N,1);
+            miuu=zeros(N,1);
+            miuuu=zeros(N,1);
+
+            P = zeros(N - 1, 1);
             C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             u_esti = zeros(N,1);
             v = zeros(N,1);
@@ -232,9 +237,9 @@ classdef paccode
                 if frozen_bits(i+1) == 1
                     [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
                     if i==0
-                        miu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log(1-pe(j+1));
+                        miu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
                     else
-                        miu(i+1) =  miu(i) + m_func(P(1),u_esti(i+1))-alphaq*log(1-pe(j+1));
+                        miu(i+1) =  miu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
                     end
                     C = update_C(obj,i,C,u_esti(i+1));
                     i = i + 1;
@@ -242,11 +247,11 @@ classdef paccode
                     [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
                     [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
                     if i==0
-                        miu_left =  B + m_func(P(1),u_left)-alphaq*log(1-pe(j+1));
-                        miu_right =  B + m_func(P(1),u_right)-alphaq*log(1-pe(j+1));
+                        miu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                        miu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
                     else
-                        miu_left =  miu(i) + m_func(P(1),u_left)-alphaq*log(1-pe(j+1));
-                        miu_right =  miu(i) + m_func(P(1),u_right)-alphaq*log(1-pe(j+1));
+                        miu_left =  miu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                        miu_right =  miu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
                     end
                     if miu_left>miu_right
                         miu_max = miu_left;
@@ -274,14 +279,14 @@ classdef paccode
                     end
 
                     if miu_max > T
-                        if toDiverge == False
+                        if toDiverge == false
                             v(i+1)=v_max;
                             if v_max == 0
                                 u_esti(i+1)=u_left;
                             else
                                 u_esti(i+1)=u_right;
                             end
-                            if onMainPath == True && delta_s(j+1)==1
+                            if onMainPath == true && delta_s(j+1)==1
                                 miu(i+1)=miu_max;
                                 miuu(i+1)=miu_min;
                             else
@@ -307,7 +312,7 @@ classdef paccode
                         else
                             c_state=c_state_right;
                         end
-                        C = update_C(i,u_esti(i+1),C);
+                        C = update_C(obj,i,C,u_esti(i+1));
                         i = i+1;
                         j = j+1;
                     else
