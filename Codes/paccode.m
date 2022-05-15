@@ -212,8 +212,8 @@ classdef paccode
             u_esti = u_active(:, path_ordered(1));
         end
 
-        function d_esti = Fano_decoder(obj,llr,pe,delta,delta_q,i_bu,maxDiversions)
-            CS=generate_CS(obj.rate_profiling,obj.n);
+        function d_esti = Fano_decoder(obj,llr,pe,Delta,Delta_q,i_bu,maxDiversions)
+            CS = generate_CS(obj.rate_profiling,obj.n);
             c_state=zeros(obj.conv_depth-1,1);
             c_state_left=zeros(obj.conv_depth-1,1);
             c_state_right=zeros(obj.conv_depth-1,1);
@@ -224,7 +224,6 @@ classdef paccode
             N=obj.N;
             n=obj.n;
             B=sum(log2(1-pe));
-            bminus1=sum(log2(1-pe));
             alphaq=1;
             onMainPath=true;
             isBackTracking=false;
@@ -233,6 +232,7 @@ classdef paccode
             frozen_bits = ones(1,N);
             frozen_bits(obj.rate_profiling) = 0;
             info_set = obj.rate_profiling;
+            delta=zeros(N,1);
             delta_s=zeros(N,1);
             miu=zeros(N,1);
             miuu=zeros(N,1);
@@ -286,7 +286,7 @@ classdef paccode
                             C_s = C;
                         elseif j==j_end
                             isBackTracking = false;
-                            T = floor(miu_end/delta)*delta;
+                            T = floor(miu_end/Delta)*Delta;
                         end
                     end
 
@@ -316,7 +316,7 @@ classdef paccode
                             miu(i+1)=miu_min;
                             miuu(i+1)=miu_max;
                             delta(j+1)=1;
-                            toDiverge=False;
+                            toDiverge=false;
                         end
                         curr_state(:,j+1)=c_state;
                         if v(i+1)==0
@@ -329,23 +329,23 @@ classdef paccode
                         j = j+1;
                     else
                         if biasUpdated == false && i<i_bu
-                            T=floor(miu_max/delta)*delta;
+                            T=floor(miu_max/Delta)*Delta;
                         else
                             if biasUpdated == false && i==i_bu
                                 if miu_max < B
-                                    alphaq=ceil(miu_max/(B*delta_q))*delta_q;
+                                    alphaq=ceil(miu_max/(B*Delta_q))*Delta_q;
                                     biasUpdated = true;
                                     for k=0:j
-                                        miuu(info_set(k+1))=miuu(info_set(k+1))+(alphaq-1)*(B-sum(log(1-pe(1:info_set(k+1)+1))));
+                                        miuu(info_set(k+1))=miuu(info_set(k+1))+(alphaq-1)*(B-sum(log2(1-pe(1:info_set(k+1)))));
                                     end
-                                    miu(info_set(1)-1) = miu(info_set(1)-1) +  (alphaq-1)*(B-sum(log(1-pe(1:info_set(1)))));
-                                    miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log(1-pe(1:info_set(j+1)))));
+                                    miu(info_set(1)-1) = miu(info_set(1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(1)-1))));
+                                    miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(j+1)-1))));
                                 end
                             end
                             curr_state(:,j+1) = c_state;
                             if onMainPath == false
                                 if miuuu(info_set(j_stem+1)) < miu_max
-                                    miuuu(info_set(j_stem+1)) = miu_max
+                                    miuuu(info_set(j_stem+1)) = miu_max;
                                 end
                             else
                                 j_end = j;
@@ -397,22 +397,24 @@ classdef paccode
                                     end
                                 end
 
-                                if isMovingBack == True
+                                if breaknreturn
+                                    break;
+                                end
+
+                                if isMovingBack == true
                                     i_cur=info_set(j+1)-1;
-                                    i_start = info_set(jj)-1;
-                                    [P,C]=updateLLRsPSs(i_start,i_cur,u_esti,P,C);
-                                    if(delta(jj)==0)
-                                        toDiverge = True;
+                                    i_start = info_set(jj+1)-1;
+                                    [P,C]= updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr);
+                                    if(delta(jj+1)==0)
+                                        toDiverge = true;
                                         break;
                                     elseif jj==0
-                                        toDiverge=False;
+                                        toDiverge=false;
                                         break;
                                     end
                                 end
 
-                                if breaknreturn
-                                    break;
-                                end
+
                             end
 
                             % Moving Back
@@ -421,10 +423,10 @@ classdef paccode
                             else
                                 onMainPath = false;
                             end
-                            i = info_set(jj+1);
+                            i = info_set(jj+1)-1;
                             j=jj;
                             frmMAINpath=false;
-                            c_state =curr_state(:,j+1);
+                            c_state = curr_state(:,j+1);
 
                         end
 
@@ -437,21 +439,21 @@ classdef paccode
 
         end
 
-        function [P,C]=updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C)
+        function [P,C]=updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr)
             if mod(i_cur,2) ~= 0
                 i_cur=i_cur-1;
             end
             if mod(i_start,2) ~= 0
                 i_start=i_start-1;
             end
-            s_start = ffs(i_start);
-            s_max = smax(i_start,i_cur);
+            s_start = ffs(i_start,obj.n);
+            s_max = smax(i_start,i_cur,obj.n);
 
             if s_start<=s_max
-                i_minus1 = find_sMaxPos(s_start,s_max,i_start);
-                C = updatePSBack(i_minus1,s_max,u_esti);
+                i_minus1 = find_sMaxPos(s_start,s_max,i_start,obj.n);
+                C = updatePSBack(obj,i_minus1,s_max,u_esti,C);
                 for i = i_minus1 : i_start
-                    P = update_P(obj,i,P,C);
+                    P = update_P(obj,i,P,C,llr);
                     C = update_C(obj,i,C,u_esti(i+1));
                 end
             else
@@ -459,7 +461,7 @@ classdef paccode
             end
         end
 
-        function C = updatePSBack(obj,i_minus1,s_max,u_esti)
+        function C = updatePSBack(obj,i_minus1,s_max,u_esti,C)
             k=2^s_max;
             for i = i_minus1 + 1 - k : i_minus1
                 C = update_C(obj,i,C,u_esti(i+1));
@@ -468,7 +470,7 @@ classdef paccode
 
 
         function P = update_P(obj,phi,P,C,llr)
-            if(phi == 0 && ~exist('llr'))
+            if((phi == 0 || phi==obj.N/2) && ~exist('llr'))
                 error("Need channel LLR to update P.")
                 return;
             end
