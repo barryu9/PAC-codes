@@ -13,10 +13,13 @@ classdef paccode
         lambda_offset %列表译码相关参数-'分段向量'
         llr_layer_vec %列表译码相关参数-'实际LLR计算执行层数'
         bit_layer_vec %列表译码相关参数-'实际比特返回层数'
+        crc_length
+        crc_parity_check
+        H_crc
     end
 
     methods
-        function obj = paccode(N,k,g,rate_profiling,varargin)
+        function obj = paccode(N,k,g,crc_length,rate_profiling,varargin)
             %PACCODE 构造此类的实例
             n=ceil(log2(N));
             N=2^n;
@@ -25,6 +28,7 @@ classdef paccode
             obj.g = g;
             obj.n = n;
             obj.R = k/N;
+            obj.crc_length = crc_length;
             obj.conv_depth = length(g);
             if(rate_profiling=='RM')
                 obj.rate_profiling = RM_rate_profiling(obj);
@@ -44,6 +48,12 @@ classdef paccode
             obj.lambda_offset = 2.^(0 : n);
             obj.llr_layer_vec = get_llr_layer(N);
             obj.bit_layer_vec = get_bit_layer(N);
+            if(crc_length > 0)
+                [~, ~, g_crc] = get_crc_objective(crc_length);
+                [G_crc, obj.H_crc] = crc_generator_matrix(g_crc, k);
+                obj.crc_parity_check = G_crc(:, k + 1 : end)';
+            end
+
         end
 
         function info_indices = RM_rate_profiling(obj)
@@ -54,7 +64,7 @@ classdef paccode
             bit=abs(bitStr)-48;
             RM_score=sum(bit,2);
             [~, sorted_indices]=sort(RM_score,'ascend');
-            info_indices=sort(sorted_indices(end-obj.k+1:end),'ascend');
+            info_indices=sort(sorted_indices(end-(obj.k+obj.crc_length)+1:end),'ascend');
         end
 
         function info_indices = GA_rate_profiling(obj,dsnr)
@@ -63,7 +73,7 @@ classdef paccode
             sigma = 1/sqrt(2 * obj.R) * 10^(-dsnr/20);
             [channels, ~] = GA(sigma, obj.N);
             [~, channel_ordered] = sort(channels, 'descend');
-            info_indices = sort(channel_ordered(1 : obj.k), 'ascend');
+            info_indices = sort(channel_ordered(1 : obj.k + obj.crc_length), 'ascend');
         end
 
         function [Pe] = get_PE(obj,dsnr)
@@ -76,13 +86,19 @@ classdef paccode
 
 
 
-        function x = encode(obj,u)
-            if(length(u)~=obj.k)
+        function x = encode(obj,d)
+            if(length(d)~=obj.k)
                 error('The length of the input d is not equal to k.')
             end
             % Rate Profile
+            if(obj.crc_length > 0)
+
+                d_info = [d; mod(obj.crc_parity_check * d, 2)];
+            else
+                d_info = d;
+            end
             v=zeros(1,obj.N);
-            v(obj.rate_profiling) = u;
+            v(obj.rate_profiling) = d_info;
             % convolutional encoder
             u=mod(v*obj.T,2);
             % Polar Encoding
@@ -204,12 +220,28 @@ classdef paccode
 
             end
             %path selection.
+            %path selection.
             activepath=logical(activepath);
             PM_active = PM(activepath);
             u_active = u(:,activepath);
             [~, path_ordered] = sort(PM_active);
-
-            u_esti = u_active(:, path_ordered(1));
+            if (obj.crc_length>0)
+                for l_index = 1 : length(PM_active)
+                    path_num = path_ordered(l_index);
+                    info_with_crc = u(:, path_num);
+                    err = sum(mod(obj.H_crc * info_with_crc, 2));
+                    if err == 0
+                        u_esti = u_active(1:end-obj.crc_length, path_num);
+                        break;
+                    else
+                        if l_index == length(PM_active)
+                            u_esti = u_active(1:end-obj.crc_length, path_ordered(1));
+                        end
+                    end
+                end
+            else
+                u_esti = u_active(1:end-obj.crc_length, path_ordered(1));
+            end
         end
 
         function d_esti = Fano_decoder(obj,llr,pe,Delta,Delta_q,i_bu,maxDiversions)
@@ -447,7 +479,7 @@ classdef paccode
             if s_start<=s_max
                 i_minus1 = find_sMaxPos(s_start,s_max,i_start,obj.n);
                 if(i_minus1 > 0)
-                C = updatePSBack(obj,i_minus1,s_max,u_esti,C);
+                    C = updatePSBack(obj,i_minus1,s_max,u_esti,C);
                 end
                 for i = i_minus1 : i_start
                     P = update_P(obj,i,P,C,llr);

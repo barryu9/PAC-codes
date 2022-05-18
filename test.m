@@ -9,11 +9,13 @@ k = 64;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
 snr_dB = 3;
 pac = paccode(N,k,g,'RM');
+crc_length = 8;
 
 
 error=0;
 for i=1:5000
 u= double(rand(k,1)>0.5);
+
 x = pac.encode(u);
 sigma = 1/sqrt(2 * pac.R) * 10^(-snr_dB/20);
 bpsk = 1 - 2 * x;

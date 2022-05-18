@@ -1,17 +1,17 @@
 clear
 addpath(genpath('Codes/'))
 
-N = 128;
-k = 64;
+N = 512;
+k = 256;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
-snr_dB = 1.5;
-pac = paccode(N,k,g,'RM');
+snr_dB = 2;
+pac = paccode(N,k,g,8,'GA',2);
 n_iter=1e5;
 frame_errors_count=zeros(1,length(snr_dB));
 bit_errors_count=zeros(1,length(snr_dB));
 FER=zeros(1,length(snr_dB));
 BER=zeros(1,length(snr_dB));
-L=256;
+L=8;
 
 for i=1:length(snr_dB)
     for ii = 1:n_iter
@@ -22,7 +22,7 @@ for i=1:length(snr_dB)
         noise = randn(N, 1);
         y = bpsk + sigma * noise;
         llr = 2/sigma^2*y;
-        d= pac.SCL_decoder(llr,L);
+        d = pac.SCL_decoder(llr,L);
         errs=sum(sum(u~=d));
         if(errs>0)
             frame_errors_count(i)=frame_errors_count(i)+1;
