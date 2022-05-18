@@ -8,7 +8,7 @@ N = 128;
 k = 64;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
 snr_dB = 3;
-pac = paccode(N,k,g,'GA',2);
+pac = paccode(N,k,g,'RM');
 
 
 error=0;
@@ -20,11 +20,12 @@ bpsk = 1 - 2 * x;
 noise = randn(N, 1);
 y = bpsk + sigma * noise;
 llr = 2/sigma^2*y;
-Pe=pac.get_PE(4);
-d= pac.Fano_decoder(llr,Pe,1,2,38,4);
-d
+Pe=pac.get_PE(3);
+d= pac.Fano_decoder(llr,Pe,1,2,39,4);
+i
 if(sum(sum(u~=d))>0)
-    error=error+1;
+    error=error+1
+    
 end
 end
 

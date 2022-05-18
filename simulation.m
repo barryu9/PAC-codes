@@ -1,17 +1,17 @@
 clear
 addpath(genpath('Codes/'))
 
-N = 512;
-k = 256;
+N = 128;
+k = 64;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
-snr_dB = 3;
-pac = paccode(N,k,g,'GA',2);
+snr_dB = 1.5;
+pac = paccode(N,k,g,'RM');
 n_iter=1e5;
 frame_errors_count=zeros(1,length(snr_dB));
 bit_errors_count=zeros(1,length(snr_dB));
 FER=zeros(1,length(snr_dB));
 BER=zeros(1,length(snr_dB));
-L=1;
+L=256;
 
 for i=1:length(snr_dB)
     for ii = 1:n_iter
@@ -28,7 +28,7 @@ for i=1:length(snr_dB)
             frame_errors_count(i)=frame_errors_count(i)+1;
             bit_errors_count(i)=bit_errors_count(i)+errs;
         end
-        if(mod(ii, 100)==0)
+        if(mod(ii, 10)==0)
             display_info(N,k,snr_dB(i),ii,n_iter,L,frame_errors_count(i),bit_errors_count(i));
         end
     end

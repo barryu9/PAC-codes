@@ -213,37 +213,37 @@ classdef paccode
         end
 
         function d_esti = Fano_decoder(obj,llr,pe,Delta,Delta_q,i_bu,maxDiversions)
-            CS = generate_CS(obj.rate_profiling,obj.n);
+            N=obj.N;
+            n=obj.n;
+            K=obj.k;
+            CS = generate_CS(obj.rate_profiling,n);
             c_state=zeros(obj.conv_depth-1,1);
-            c_state_left=zeros(obj.conv_depth-1,1);
-            c_state_right=zeros(obj.conv_depth-1,1);
-            curr_state=zeros(obj.conv_depth-1,obj.k); %0~k-1,1:|g|-1;
+            curr_state=zeros(obj.conv_depth-1,K); %0~k-1,1:|g|-1;
             i=0;
             j=0;
             T=0;
-            N=obj.N;
-            n=obj.n;
+            P = zeros(N - 1, 1);
+            C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             B=sum(log2(1-pe));
             alphaq=1;
             onMainPath=true;
             isBackTracking=false;
             toDiverge=false;
             biasUpdated=false;
-            frozen_bits = ones(1,N);
-            frozen_bits(obj.rate_profiling) = 0;
+
+            j_stem=-1;
+            jj=-1;
             info_set = obj.rate_profiling;
-            delta=zeros(N,1);
-            delta_s=zeros(N,1);
+            frozen_bits = ones(1,N);
+            frozen_bits(info_set) = 0;
+            delta=zeros(K,1);
+            delta_s=zeros(K,1);
             miu=zeros(N,1);
             miuu=zeros(N,1);
             miuuu=zeros(N,1);
-            j=0;
-            jj=0;
-            j_stem=0;
-            P = zeros(N - 1, 1);
-            C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             u_esti = zeros(N,1);
             v = zeros(N,1);
+
             while i < N
                 P = update_P(obj,i,P,C,llr);
                 if frozen_bits(i+1) == 1
@@ -330,107 +330,102 @@ classdef paccode
                     else
                         if biasUpdated == false && i<i_bu
                             T=floor(miu_max/Delta)*Delta;
+                        elseif biasUpdated == false && i==i_bu
+                            if miu_max < B
+                                alphaq=ceil(miu_max/(B*Delta_q))*Delta_q;
+                                biasUpdated = true;
+                                for k=0:j
+                                    miuu(info_set(k+1))=miuu(info_set(k+1))+(alphaq-1)*(B-sum(log2(1-pe(1:info_set(k+1)))));
+                                end
+                                miu(info_set(1)-1) = miu(info_set(1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(1)-1))));
+                                miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(j+1)-1))));
+                            end
+                        end
+                        curr_state(:,j+1) = c_state;
+                        if onMainPath == false
+                            if miuuu(info_set(j_stem+1)) < miu_max
+                                miuuu(info_set(j_stem+1)) = miu_max;
+                            end
                         else
-                            if biasUpdated == false && i==i_bu
-                                if miu_max < B
-                                    alphaq=ceil(miu_max/(B*Delta_q))*Delta_q;
-                                    biasUpdated = true;
-                                    for k=0:j
-                                        miuu(info_set(k+1))=miuu(info_set(k+1))+(alphaq-1)*(B-sum(log2(1-pe(1:info_set(k+1)))));
-                                    end
-                                    miu(info_set(1)-1) = miu(info_set(1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(1)-1))));
-                                    miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(j+1)-1))));
-                                end
-                            end
-                            curr_state(:,j+1) = c_state;
-                            if onMainPath == false
-                                if miuuu(info_set(j_stem+1)) < miu_max
-                                    miuuu(info_set(j_stem+1)) = miu_max;
-                                end
-                            else
-                                j_end = j;
-                                miu_end = miu_max;
-                                frmMAINpath = true;
-                                isBackTracking = true;
-                            end
-                            %% Moving Back
-                            isMovingBack = false;
-                            breaknreturn = false;
-                            while true
-                                jj=j;
-                                if frmMAINpath == true
-                                    for k=0:jj-1
-                                        if miuu(info_set(k+1))>T && CS(k+1)==1
-                                            jj=k;
-                                            j_stem=k;
-                                            isMovingBack=true;
-                                            P_s = P;
-                                            C_s = C;
-                                            break;
-                                        end
-                                    end
-
-                                    if jj==j
-                                        toDiverge = false;
+                            j_end = j;
+                            miu_end = miu_max;
+                            frmMAINpath = true;
+                            isBackTracking = true;
+                        end
+                        %% Moving Back Start
+                        isMovingBack = false;
+                        breaknreturn = false;
+                        while true
+                            jj=j;
+                            if frmMAINpath == true
+                                for k=0:jj-1
+                                    if miuu(info_set(k+1))>T && CS(k+1)==1
+                                        jj=k;
+                                        j_stem=k;
+                                        isMovingBack=true;
+                                        P_s = P;
+                                        C_s = C;
                                         break;
                                     end
-                                else
-                                    for k = jj-1 : -1 : 0
-                                        if j_stem == k
-                                            jj=k;
-                                            P=P_s;
-                                            C=C_s;
-                                            toDiverge=false;
-                                            breaknreturn = true;
-                                            break;
-                                        end
-                                        if miuu(info_set(k+1)) > T && CS(k+1) == 1
-                                            if sum(delta(1:k+1))>= maxDiversions
-                                                continue;
-                                            end
-                                            if(delta(k+1)==1)
-                                                jj=k;
-                                                isMovingBack=true;
-                                                break;
-                                            end
-                                        end
-                                    end
                                 end
 
-                                if breaknreturn
+                                if jj==j
+                                    toDiverge = false;
                                     break;
                                 end
-
-                                if isMovingBack == true
-                                    i_cur=info_set(j+1)-1;
-                                    i_start = info_set(jj+1)-1;
-                                    [P,C]= updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr);
-                                    if(delta(jj+1)==0)
-                                        toDiverge = true;
-                                        break;
-                                    elseif jj==0
+                            else
+                                for k = jj-1 : -1 : 0
+                                    if j_stem == k
+                                        jj=k;
+                                        P=P_s;
+                                        C=C_s;
                                         toDiverge=false;
+                                        breaknreturn = true;
                                         break;
                                     end
+                                    if miuu(info_set(k+1)) > T && CS(k+1) == 1
+                                        if sum(delta(1:k+1))>= maxDiversions
+                                            continue;
+                                        end
+                                        if(delta(k+1)==1)
+                                            jj=k;
+                                            isMovingBack=true;
+                                            break;
+                                        end
+                                    end
                                 end
-
-
                             end
 
-                            % Moving Back
-                            if toDiverge == false && (jj == j_stem || jj==j)
-                                onMainPath = true;
-                            else
-                                onMainPath = false;
+                            if breaknreturn
+                                break;
                             end
-                            i = info_set(jj+1)-1;
-                            j=jj;
-                            frmMAINpath=false;
-                            c_state = curr_state(:,j+1);
+
+                            if isMovingBack == true
+                                i_cur=info_set(j+1)-1;
+                                i_start = info_set(jj+1)-1;
+                                [P,C]= updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr);
+                                if(delta(jj+1)==0)
+                                    toDiverge = true;
+                                    break;
+                                elseif jj==0
+                                    toDiverge=false;
+                                    break;
+                                end
+                            end
+
 
                         end
 
-
+                        % Moving Back End
+                        if toDiverge == false && (jj == j_stem || jj==j)
+                            onMainPath = true;
+                        else
+                            onMainPath = false;
+                        end
+                        i = info_set(jj+1)-1;
+                        j=jj;
+                        frmMAINpath=false;
+                        c_state = curr_state(:,j+1);
                     end
 
                 end
@@ -451,7 +446,9 @@ classdef paccode
 
             if s_start<=s_max
                 i_minus1 = find_sMaxPos(s_start,s_max,i_start,obj.n);
+                if(i_minus1 > 0)
                 C = updatePSBack(obj,i_minus1,s_max,u_esti,C);
+                end
                 for i = i_minus1 : i_start
                     P = update_P(obj,i,P,C,llr);
                     C = update_C(obj,i,C,u_esti(i+1));
@@ -463,7 +460,7 @@ classdef paccode
 
         function C = updatePSBack(obj,i_minus1,s_max,u_esti,C)
             k=2^s_max;
-            for i = i_minus1 + 1 - k : i_minus1
+            for i = i_minus1 + 1 - k : i_minus1 - 1
                 C = update_C(obj,i,C,u_esti(i+1));
             end
         end
