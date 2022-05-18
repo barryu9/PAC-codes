@@ -220,7 +220,6 @@ classdef paccode
 
             end
             %path selection.
-            %path selection.
             activepath=logical(activepath);
             PM_active = PM(activepath);
             u_active = u(:,activepath);
@@ -492,6 +491,100 @@ classdef paccode
             for i = i_minus1 + 1 - k : i_minus1
                 C = update_C(obj,i,C,u_esti(i+1));
             end
+        end
+
+        function d = Viterbi_decoder(obj,llr, L)
+            N = obj.N;
+            n = obj.n;
+            K = obj.k;
+            g = obj.g;
+            m = obj.conv_depth-1;
+            path_total = 2^m*L*2;
+            frozen_bits = ones(1,N);
+            frozen_bits(obj.rate_profiling) = 0;
+            P=zeros(N-1,path_total);
+            C=zeros(N-1,2*path_total);
+            u_esti = zeros(N,path_total);
+            v_esti = zeros(N,path_total);
+            c_state  = zeros(obj.conv_depth-1,path_total);
+            M = zeros(1,path_total);
+            active_path=zeros(1,path_total);
+            active_path(1)=1;
+            available_path = [2:path_total];
+            for t = 0 : N-1
+                if frozen_bits(t+1)==1
+                    for path_index = 1: path_total
+                        if(active_path(path_index)==0)
+                            continue;
+                        end
+                        P(:,path_index) = update_P(obj,t,P(:,path_index),C(:,2*path_index-1:2*path_index),llr);
+                        v_esti(t+1,path_index)=0;
+                        [u_esti(t+1,path_index),c_state(:,path_index)]=conv1bTrans(0,c_state(:,path_index),obj.g);
+                        M(path_index) = M(path_index)-m_func(P(1,path_index),u_esti(t+1,path_index));
+                        C(:,2*path_index-1:2*path_index) = update_C(obj,t,C(:,2*path_index-1:2*path_index),u_esti(t+1,path_index));
+
+                    end
+                else
+                    path_activate=[];
+                    for path_index = 1: path_total
+                        if(active_path(path_index)==0)
+                            continue;
+                        end
+                        copy_path_index = available_path(1);
+                        available_path=available_path(2:end);
+                        path_activate = [path_activate,copy_path_index];
+                        P(:,path_index) = update_P(obj,t,P(:,path_index),C(:,2*path_index-1:2*path_index),llr);
+                        P(:,copy_path_index) = P(:,path_index);
+                        C(:,2*copy_path_index-1:2*copy_path_index) = C(:,2*path_index-1:2*path_index);
+                        c_state(:,copy_path_index) = c_state(:,path_index);
+                        v_esti(:,copy_path_index)=v_esti(:,path_index);
+                        v_esti(t+1,path_index)=0;
+                        v_esti(t+1,copy_path_index)=1;
+                        [u_esti(t+1,path_index),c_state(:,path_index)]=conv1bTrans(0,c_state(:,path_index),obj.g);
+                        [u_esti(t+1,copy_path_index),c_state(:,copy_path_index)]=conv1bTrans(1,c_state(:,copy_path_index),obj.g);
+                        M(copy_path_index) = M(path_index)-m_func(P(1,copy_path_index),u_esti(t+1,copy_path_index));
+                        M(path_index) = M(path_index)-m_func(P(1,path_index),u_esti(t+1,path_index));
+                        C(:,2*path_index-1:2*path_index) = update_C(obj,t,C(:,2*path_index-1:2*path_index),u_esti(t+1,path_index));
+                        C(:,2*copy_path_index-1:2*copy_path_index) = update_C(obj,t,C(:,2*copy_path_index-1:2*copy_path_index),u_esti(t+1,copy_path_index));
+                    end
+
+                    active_path(path_activate) = 1;
+
+                    path_kill=[];
+                    if sum(active_path) > path_total/2;
+                        M_s = realmax*ones(L,2^m);
+                        Retain_path = -1*ones(L,2^m);
+                        for path_index = 1: path_total
+                            if(active_path(path_index)==0)
+                                continue;
+                            end
+                            s = binvec2dec(c_state(:,path_index)')+1;
+                            [M_max,M_max_pos] = max(M_s(:,s));
+                            if(M(path_index)<M_max)
+                                if(Retain_path(M_max_pos,s) ~= -1)
+                                    path_kill = [path_kill,Retain_path(M_max_pos,s)];
+                                end
+
+                                Retain_path(M_max_pos,s)=path_index;
+                                M_s(M_max_pos,s) = M(path_index);
+                            else
+                                path_kill=[path_kill,path_index];
+                            end
+                        end
+                        available_path=[available_path,path_kill];
+                        active_path(path_kill)=0;
+                    end
+                end
+            end
+
+            active_path = logical(active_path);
+            M_active = M(active_path);
+            v_active = v_esti(:,active_path);
+            [~,M_active_sorted]=sort(M_active,'ascend');
+            v = v_active(:,M_active_sorted(1));
+            d = v(obj.rate_profiling);
+
+
         end
 
 
