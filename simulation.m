@@ -5,7 +5,7 @@ N = 512;
 k = 256;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
 snr_dB = 2;
-pac = paccode(N,k,g,8,'GA',2);
+pac = paccode(N,k,g,0,'GA',2);
 n_iter=1e5;
 frame_errors_count=zeros(1,length(snr_dB));
 bit_errors_count=zeros(1,length(snr_dB));

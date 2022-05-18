@@ -76,7 +76,7 @@ classdef paccode
             info_indices = sort(channel_ordered(1 : obj.k + obj.crc_length), 'ascend');
         end
 
-        function [Pe] = get_PE(obj,dsnr)
+        function [Pe] = get_PE_GA(obj,dsnr)
             %GET_PE 此处显示有关此函数的摘要
             %   此处显示详细说明
             sigma = 1/sqrt(2 * obj.R) * 10^(-dsnr/20);
@@ -93,12 +93,12 @@ classdef paccode
             % Rate Profile
             if(obj.crc_length > 0)
 
-                d_info = [d; mod(obj.crc_parity_check * d, 2)];
+                info_with_crc = [d; mod(obj.crc_parity_check * d, 2)];
             else
-                d_info = d;
+                info_with_crc = d;
             end
             v=zeros(1,obj.N);
-            v(obj.rate_profiling) = d_info;
+            v(obj.rate_profiling) = info_with_crc;
             % convolutional encoder
             u=mod(v*obj.T,2);
             % Polar Encoding
@@ -253,7 +253,7 @@ classdef paccode
             curr_state=zeros(obj.conv_depth-1,K); %0~k-1,1:|g|-1;
             i=0;
             j=0;
-            T=0;
+            Threshold=0;
             P = zeros(N - 1, 1);
             C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             B=sum(log2(1-pe));
@@ -310,7 +310,7 @@ classdef paccode
                     end
 
                     if onMainPath==true && isBackTracking == true
-                        if miu_min>T && CS(j+1)==1 && j<j_end
+                        if miu_min>Threshold && CS(j+1)==1 && j<j_end
                             onMainPath=false;
                             delta_s(j+1)=1;
                             j_stem=j;
@@ -318,11 +318,11 @@ classdef paccode
                             C_s = C;
                         elseif j==j_end
                             isBackTracking = false;
-                            T = floor(miu_end/Delta)*Delta;
+                            Threshold = floor(miu_end/Delta)*Delta;
                         end
                     end
 
-                    if miu_max > T
+                    if miu_max > Threshold
                         if toDiverge == false
                             v(i+1)=v_max;
                             if v_max == 0
@@ -361,8 +361,8 @@ classdef paccode
                         j = j+1;
                     else
                         if biasUpdated == false && i<i_bu
-                            T=floor(miu_max/Delta)*Delta;
-                        elseif biasUpdated == false && i==i_bu
+                            Threshold=floor(miu_max/Delta)*Delta;
+                        elseif biasUpdated == false && i>=i_bu
                             if miu_max < B
                                 alphaq=ceil(miu_max/(B*Delta_q))*Delta_q;
                                 biasUpdated = true;
@@ -391,7 +391,7 @@ classdef paccode
                             jj=j;
                             if frmMAINpath == true
                                 for k=0:jj-1
-                                    if miuu(info_set(k+1))>T && CS(k+1)==1
+                                    if miuu(info_set(k+1))>Threshold && CS(k+1)==1
                                         jj=k;
                                         j_stem=k;
                                         isMovingBack=true;
@@ -415,7 +415,7 @@ classdef paccode
                                         breaknreturn = true;
                                         break;
                                     end
-                                    if miuu(info_set(k+1)) > T && CS(k+1) == 1
+                                    if miuu(info_set(k+1)) > Threshold && CS(k+1) == 1
                                         if sum(delta(1:k+1))>= maxDiversions
                                             continue;
                                         end
@@ -478,9 +478,6 @@ classdef paccode
 
             if s_start<=s_max
                 i_minus1 = find_sMaxPos(s_start,s_max,i_start,obj.n);
-                if(i_minus1 > 0)
-                    C = updatePSBack(obj,i_minus1,s_max,u_esti,C);
-                end
                 for i = i_minus1 : i_start
                     P = update_P(obj,i,P,C,llr);
                     C = update_C(obj,i,C,u_esti(i+1));
@@ -492,7 +489,7 @@ classdef paccode
 
         function C = updatePSBack(obj,i_minus1,s_max,u_esti,C)
             k=2^s_max;
-            for i = i_minus1 + 1 - k : i_minus1 - 1
+            for i = i_minus1 + 1 - k : i_minus1
                 C = update_C(obj,i,C,u_esti(i+1));
             end
         end
