@@ -10,6 +10,7 @@ Arikan教授的PAC码的Matlab实现 （开发中）
 1. PAC codes' construction (RM Rules and GA method)
 2. PAC codes' (CRC-aided) SCL decoder
 3. PAC codes' List Viterbi decoder
+4. Dispersion Bound
 
 ## Temporarily unavailable functions
 
@@ -27,6 +28,7 @@ Arikan教授的PAC码的Matlab实现 （开发中）
 1. https://github.com/YuYongRun/PolarCodeDecodersInMatlab
 2. https://github.com/mohammad-rowshan/List-Decoder-for-Polar-Codes-and-PAC-Codes
 3. https://github.com/mohammad-rowshan/List-Viterbi-Decoder-for-PAC-Codes
+4. https://github.com/yp-mit/spectre
 
 
 
