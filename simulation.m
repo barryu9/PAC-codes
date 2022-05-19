@@ -1,19 +1,23 @@
 clear
 addpath(genpath('Codes/'))
 
-N = 512;
-k = 256;
+N = 128;
+k = 64;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
-snr_dB = 2;
-pac = paccode(N,k,g,0,'GA',2);
-n_iter=1e5;
+snr_dB = 0:0.25:3;
+Rate_Profiling_method = 'RM';
+dsnr = 3.5;
+crc_length = 0;
+
+pac = paccode(N,k,g,crc_length,Rate_Profiling_method,dsnr);
+n_iter=5e4;
 frame_errors_count=zeros(1,length(snr_dB));
 bit_errors_count=zeros(1,length(snr_dB));
 FER=zeros(1,length(snr_dB));
 BER=zeros(1,length(snr_dB));
-L=8;
+L=32;
 
-for i=1:length(snr_dB)
+parfor i=1:length(snr_dB)
     for ii = 1:n_iter
         u= double(rand(k,1)>0.5);
         x = pac.encode(u);
