@@ -56,7 +56,7 @@ classdef paccode
 
         end
 
-        function info_indices = RM_rate_profiling(obj)
+        function info_indices = RM_rate_profiling(obj,dsnr)
             %METHOD1 此处显示有关此方法的摘要
             %   此处显示详细说明
             Channel_indices=(0:obj.N-1)';
@@ -243,11 +243,10 @@ classdef paccode
             end
         end
 
-        function d_esti = Fano_decoder(obj,llr,pe,Delta,Delta_q,i_bu,maxDiversions)
+        function d_esti = Fano_decoder(obj,llr,pe,Delta,Delta_q,i_bu)
             N=obj.N;
             n=obj.n;
             K=obj.k;
-            CS = generate_CS(obj.rate_profiling,n);
             c_state=zeros(obj.conv_depth-1,1);
             curr_state=zeros(obj.conv_depth-1,K); %0~k-1,1:|g|-1;
             i=0;
@@ -257,21 +256,14 @@ classdef paccode
             C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             B=sum(log2(1-pe));
             alphaq=1;
-            onMainPath=true;
-            isBackTracking=false;
             toDiverge=false;
             biasUpdated=false;
-
-            j_stem=-1;
-            jj=-1;
             info_set = obj.rate_profiling;
             frozen_bits = ones(1,N);
             frozen_bits(info_set) = 0;
             delta=zeros(K,1);
-            delta_s=zeros(K,1);
-            miu=zeros(N,1);
-            miuu=zeros(N,1);
-            miuuu=zeros(N,1);
+            mu=zeros(N,1);
+            muu=zeros(N,1);
             u_esti = zeros(N,1);
             v = zeros(N,1);
 
@@ -280,9 +272,9 @@ classdef paccode
                 if frozen_bits(i+1) == 1
                     [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
                     if i==0
-                        miu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                        mu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
                     else
-                        miu(i+1) =  miu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                        mu(i+1) =  mu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
                     end
                     C = update_C(obj,i,C,u_esti(i+1));
                     i = i + 1;
@@ -290,38 +282,24 @@ classdef paccode
                     [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
                     [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
                     if i==0
-                        miu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                        miu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                        mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                        mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
                     else
-                        miu_left =  miu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                        miu_right =  miu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                        mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                        mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
                     end
-                    if miu_left>miu_right
-                        miu_max = miu_left;
-                        miu_min = miu_right;
+                    if mu_left > mu_right
+                        mu_max = mu_left;
+                        mu_min = mu_right;
                         v_max = 0;
                         v_min = 1;
                     else
-                        miu_max = miu_right;
-                        miu_min = miu_left;
+                        mu_max = mu_right;
+                        mu_min = mu_left;
                         v_max = 1;
                         v_min = 0;
                     end
-
-                    if onMainPath==true && isBackTracking == true
-                        if miu_min>Threshold && CS(j+1)==1 && j<j_end
-                            onMainPath=false;
-                            delta_s(j+1)=1;
-                            j_stem=j;
-                            P_s = P;
-                            C_s = C;
-                        elseif j==j_end
-                            isBackTracking = false;
-                            Threshold = floor(miu_end/Delta)*Delta;
-                        end
-                    end
-
-                    if miu_max > Threshold
+                    if mu_max > Threshold
                         if toDiverge == false
                             v(i+1)=v_max;
                             if v_max == 0
@@ -329,13 +307,8 @@ classdef paccode
                             else
                                 u_esti(i+1)=u_right;
                             end
-                            if onMainPath == true && delta_s(j+1)==1
-                                miu(i+1)=miu_max;
-                                miuu(i+1)=miu_min;
-                            else
-                                miu(i+1)=miu_max;
-                                miuu(i+1)=miuuu(i+1);
-                            end
+                            mu(i+1)=mu_max;
+                            muu(i+1)=mu_min;
                             delta(j+1)=0;
                         else
                             v(i+1)=v_min;
@@ -344,91 +317,51 @@ classdef paccode
                             else
                                 u_esti(i+1)=u_right;
                             end
-                            miu(i+1)=miu_min;
-                            miuu(i+1)=miu_max;
+                            mu(i+1)=mu_min;
+                            muu(i+1)=mu_max;
                             delta(j+1)=1;
                             toDiverge=false;
                         end
+
                         curr_state(:,j+1)=c_state;
+
                         if v(i+1)==0
                             c_state=c_state_left;
                         else
                             c_state=c_state_right;
                         end
+
+
+                        % Tighten the Threshold
+                        if j==0
+                            while mu_max > Threshold
+                                Threshold=Threshold + Delta;
+                            end
+                            Threshold=Threshold - Delta;
+                        elseif(mu(info_set(j))<Threshold+Delta)
+                            while mu_max > Threshold
+                                Threshold = Threshold + Delta;
+                            end
+                            Threshold=Threshold - Delta;
+                        end
+
                         C = update_C(obj,i,C,u_esti(i+1));
                         i = i+1;
                         j = j+1;
+
                     else
-                        if biasUpdated == false && i<i_bu
-                            Threshold=floor(miu_max/Delta)*Delta;
-                        elseif biasUpdated == false && i>=i_bu
-                            if miu_max < B
-                                alphaq=ceil(miu_max/(B*Delta_q))*Delta_q;
-                                biasUpdated = true;
-                                for k=0:j
-                                    miuu(info_set(k+1))=miuu(info_set(k+1))+(alphaq-1)*(B-sum(log2(1-pe(1:info_set(k+1)))));
-                                end
-                                miu(info_set(1)-1) = miu(info_set(1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(1)-1))));
-                                miu(info_set(j+1)-1) = miu(info_set(j+1)-1) +  (alphaq-1)*(B-sum(log2(1-pe(1:info_set(j+1)-1))));
-                            end
-                        end
                         curr_state(:,j+1) = c_state;
-                        if onMainPath == false
-                            if miuuu(info_set(j_stem+1)) < miu_max
-                                miuuu(info_set(j_stem+1)) = miu_max;
-                            end
-                        else
-                            j_end = j;
-                            miu_end = miu_max;
-                            frmMAINpath = true;
-                            isBackTracking = true;
-                        end
-                        %% Moving Back Start
                         isMovingBack = false;
-                        breaknreturn = false;
                         while true
                             jj=j;
-                            if frmMAINpath == true
-                                for k=0:jj-1
-                                    if miuu(info_set(k+1))>Threshold && CS(k+1)==1
+                            for k = jj-1 : -1 : 0
+                                if muu(info_set(k+1)) > Threshold
+                                    if(delta(k+1)==0)
                                         jj=k;
-                                        j_stem=k;
                                         isMovingBack=true;
-                                        P_s = P;
-                                        C_s = C;
                                         break;
                                     end
                                 end
-
-                                if jj==j
-                                    toDiverge = false;
-                                    break;
-                                end
-                            else
-                                for k = jj-1 : -1 : 0
-                                    if j_stem == k
-                                        jj=k;
-                                        P=P_s;
-                                        C=C_s;
-                                        toDiverge=false;
-                                        breaknreturn = true;
-                                        break;
-                                    end
-                                    if miuu(info_set(k+1)) > Threshold && CS(k+1) == 1
-                                        if sum(delta(1:k+1))>= maxDiversions
-                                            continue;
-                                        end
-                                        if(delta(k+1)==1)
-                                            jj=k;
-                                            isMovingBack=true;
-                                            break;
-                                        end
-                                    end
-                                end
-                            end
-
-                            if breaknreturn
-                                break;
                             end
 
                             if isMovingBack == true
@@ -439,31 +372,290 @@ classdef paccode
                                     toDiverge = true;
                                     break;
                                 elseif jj==0
+                                    Threshold=Threshold-Delta;
                                     toDiverge=false;
                                     break;
                                 end
+                            else
+                                Threshold=Threshold-Delta;
+                                toDiverge=false;
+                                break;
                             end
 
 
                         end
-
-                        % Moving Back End
-                        if toDiverge == false && (jj == j_stem || jj==j)
-                            onMainPath = true;
-                        else
-                            onMainPath = false;
-                        end
                         i = info_set(jj+1)-1;
                         j=jj;
-                        frmMAINpath=false;
                         c_state = curr_state(:,j+1);
                     end
-
                 end
+
             end
             d_esti = v(info_set);
 
         end
+
+        function [d_esti] = My_Fano_decoder(obj,llr,pe,Delta)
+            % Init;
+            N=obj.N;
+            n=obj.n;
+            K=obj.k;
+            c_state=zeros(obj.conv_depth-1,1);
+            curr_state=zeros(obj.conv_depth-1,K); %0~k-1,1:|g|-1;
+            i=0;
+            j=0;
+            Threshold=0;
+            P = zeros(N - 1, 1);
+            C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
+            B=sum(log2(1-pe));
+            alphaq=1;
+            info_set = obj.rate_profiling;
+            frozen_bits = ones(1,N);
+            frozen_bits(info_set) = 0;
+            delta=zeros(K,1);
+            mu=zeros(N,1);
+            u_esti = zeros(N,1);
+            v = zeros(N,1);
+            firstInformationIndex = info_set(1) - 1;
+            ThresholdUpdate=true;
+            % find first information bit
+            while i < firstInformationIndex
+                P = update_P(obj,i,P,C,llr);
+                [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
+                if i==0
+                    mu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                else
+                    mu(i+1) =  mu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                end
+                C = update_C(obj,i,C,u_esti(i+1));
+                i = i + 1;
+            end
+
+            P = update_P(obj,i,P,C,llr);
+            % Look forward to best node
+            [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
+            [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
+            if i==0
+                mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+            else
+                mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+            end
+
+            if mu_left > mu_right
+                mu_max = mu_left;
+                v_max = 0;
+            else
+                mu_max = mu_right;
+                v_max = 1;
+            end
+
+            mu_look = mu_max;
+            v_look = v_max;
+
+            % update threshold
+            while mu_look < Threshold
+                Threshold = Threshold - Delta;
+            end
+
+            % move forward
+            v(i+1)=v_look;
+            if v_look == 0
+                u_esti(i+1)=u_left;
+            else
+                u_esti(i+1)=u_right;
+            end
+            mu(i+1)=mu_look;
+            curr_state(:,j+1)=c_state;
+            if v(i+1)==0
+                c_state=c_state_left;
+            else
+                c_state=c_state_right;
+            end
+            C = update_C(obj,i,C,u_esti(i+1));
+            i = i+1;
+            j = j+1;
+
+            %while not end of tree do
+            while i < N
+                P = update_P(obj,i,P,C,llr);
+                if frozen_bits(i+1) == 1
+                    [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
+                    if i==0
+                        mu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                    else
+                        mu(i+1) =  mu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                    end
+                    C = update_C(obj,i,C,u_esti(i+1));
+                    i = i + 1;
+                else
+                    % if first visit then tighten threshold
+                    if j == 1
+                        mu_pre = -realmax;
+                        mu_cur = mu(info_set(j));
+                    else
+                        mu_pre = mu(info_set(j-1));
+                        mu_cur = mu(info_set(j));
+                    end
+                    if ThresholdUpdate == false
+                        ThresholdUpdate = true;
+                    elseif mu_pre < Threshold + Delta
+                        while mu_cur > Threshold
+                            Threshold = Threshold + Delta;
+                        end
+                        Threshold = Threshold - Delta;
+                    end
+
+                    % look forward to best node
+                    [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
+                    [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
+                    if i==0
+                        mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                        mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                    else
+                        mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                        mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                    end
+                    if mu_left > mu_right
+                        mu_max = mu_left;
+                        v_max = 0;
+                    else
+                        mu_max = mu_right;
+                        v_max = 1;
+                    end
+
+                    mu_look = mu_max;
+                    v_look = v_max;
+
+                    while mu_look < Threshold
+                        if j>0
+                            mu_pre = mu(info_set(j));
+                        else
+                            mu_pre = -realmax;
+                        end
+                        if mu_pre >= Threshold
+                            jj = j;
+                            while true
+                                jj = jj - 1;
+                                if jj>0
+                                    mu_pre = mu(info_set(jj));
+                                else
+                                    mu_pre = -realmax;
+                                end
+                                if(not(delta(jj+1) == 1 && mu_pre >= Threshold))
+                                    break;
+                                end
+                            end
+                            i_cur=info_set(j+1)-1;
+                            i_start = info_set(jj+1)-1;
+                            [P,C]= updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr);
+                            i = info_set(jj+1) - 1;
+                            j = jj;
+                            c_state = curr_state(:,j+1);
+
+                            if delta(j+1) == 0
+                                P = update_P(obj,i,P,C,llr);
+                                [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
+                                [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
+                                if i==0
+                                    mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                                    mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                                else
+                                    mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                                    mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                                end
+
+                                if mu_left > mu_right
+                                    mu_min = mu_right;
+                                    v_min = 1;
+                                else
+                                    mu_min = mu_left;
+                                    v_min = 0;
+                                end
+
+                                mu_look = mu_min;
+                                v_look = v_min;
+                                delta(j+1) = 1;
+                            else
+                                Threshold = Threshold - Delta;
+                                ThresholdUpdate = false;
+                                P = update_P(obj,i,P,C,llr);
+                                [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
+                                [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
+                                if i==0
+                                    mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                                    mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                                else
+                                    mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                                    mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                                end
+
+                                if mu_left > mu_right
+                                    mu_max = mu_left;
+                                    v_max = 0;
+                                else
+                                    mu_max = mu_right;
+                                    v_max = 1;
+                                end
+
+                                mu_look = mu_max;
+                                v_look = v_max;
+                            end
+                        else
+                            Threshold = Threshold - Delta;
+                            ThresholdUpdate = false;
+                            P = update_P(obj,i,P,C,llr);
+                            [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
+                            [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
+                            if i==0
+                                mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                                mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                            else
+                                mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
+                                mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                            end
+
+                            if mu_left > mu_right
+                                mu_max = mu_left;
+                                v_max = 0;
+                            else
+                                mu_max = mu_right;
+                                v_max = 1;
+                            end
+
+                            mu_look = mu_max;
+                            v_look = v_max;                            
+                        end
+                    end
+                    %move forward
+                    v(i+1)=v_look;
+                    if v_look == 0
+                        u_esti(i+1)=u_left;
+                    else
+                        u_esti(i+1)=u_right;
+                    end
+                    mu(i+1)=mu_look;
+
+                    curr_state(:,j+1)=c_state;
+
+                    if v(i+1)==0
+                        c_state=c_state_left;
+                    else
+                        c_state=c_state_right;
+                    end
+                    C = update_C(obj,i,C,u_esti(i+1));
+                    i = i+1;
+                    j = j+1;
+
+
+                end
+            end
+
+
+            d_esti = v(info_set);
+        end
+
 
         function [P,C]=updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr)
             if mod(i_cur,2) ~= 0
