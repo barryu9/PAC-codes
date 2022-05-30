@@ -30,12 +30,19 @@ classdef paccode
             obj.R = k/N;
             obj.crc_length = crc_length;
             obj.conv_depth = length(g);
-            if(rate_profiling=='RM')
+            if(strcmp(rate_profiling,'RM'))
                 obj.rate_profiling = RM_rate_profiling(obj);
-            elseif(rate_profiling=='GA')
+            elseif(strcmp(rate_profiling,'GA'))
                 if(size(varargin,2)>0)
                     dsnr = varargin{1};
                     obj.rate_profiling = GA_rate_profiling(obj,dsnr);
+                else
+                    error('You should input the design snr(dB).')
+                end
+            elseif(strcmp(rate_profiling,'RM-Polar'))
+                if(size(varargin,2)>0)
+                    dsnr = varargin{1};
+                    obj.rate_profiling = RM_Polar_rate_profiling(obj,dsnr);
                 else
                     error('You should input the design snr(dB).')
                 end
@@ -56,7 +63,7 @@ classdef paccode
 
         end
 
-        function info_indices = RM_rate_profiling(obj,dsnr)
+        function info_indices = RM_rate_profiling(obj)
             %METHOD1 此处显示有关此方法的摘要
             %   此处显示详细说明
             Channel_indices=(0:obj.N-1)';
@@ -65,6 +72,54 @@ classdef paccode
             RM_score=sum(bit,2);
             [~, sorted_indices]=sort(RM_score,'ascend');
             info_indices=sort(sorted_indices(end-(obj.k+obj.crc_length)+1:end),'ascend');
+        end
+
+        function info_indices = RM_Polar_rate_profiling(obj,dsnr)
+            %METHOD1 此处显示有关此方法的摘要
+            %   此处显示详细说明
+            Channel_indices=(0:obj.N-1)';
+            bitStr=dec2bin(Channel_indices);
+            bit=abs(bitStr)-48;
+            RM_score=sum(bit,2);
+            sigma = 1/sqrt(2 * obj.R) * 10^(-dsnr/20);
+            [channel_score, ~] = GA(sigma, obj.N);
+            mask = zeros(obj.N,4);
+            for i = 1 : obj.N
+                mask(i,:)=[i-1,RM_score(i),channel_score(i),1];
+            end
+            weightCount = zeros(obj.n+1,1);
+            for i = 1 : obj.N
+                weightCount(RM_score(i)+1)=weightCount(RM_score(i)+1)+1;
+            end
+            bitCnt = 0;
+            k=1;
+            while bitCnt + weightCount(k) <= obj.N-obj.k
+                for i = 1 : obj.N
+                    if RM_score(i) == k-1
+                        mask(i,4) = 0;
+                        bitCnt = bitCnt+1;
+                    end
+                end
+                k=k+1;
+            end
+            mask2 = [];
+            for i = 1:obj.N
+                if mask(i,2) == k-1
+                    mask2=[mask2;mask(i,:)];
+                end
+            end
+
+            [~,mask2_sorted_indices] = sort(mask2(:,2),'ascend');
+            mask2=mask2(mask2_sorted_indices,:);
+            remainder = obj.N-obj.k-bitCnt;
+            for i = 1: remainder
+                mask(mask2(i,1),4)=0;
+            end
+            info_bits = mask(:,4);
+            info_indices = find(info_bits==1);
+
+            
+
         end
 
         function info_indices = GA_rate_profiling(obj,dsnr)
@@ -397,36 +452,36 @@ classdef paccode
 
         function [d_esti] = My_Fano_decoder(obj,llr,pe,Delta)
             % Init;
-            N=obj.N;
-            n=obj.n;
-            K=obj.k;
             c_state=zeros(obj.conv_depth-1,1);
-            curr_state=zeros(obj.conv_depth-1,K); %0~k-1,1:|g|-1;
+            curr_state=zeros(obj.conv_depth-1,obj.k); %0~k-1,1:|g|-1;
             i=0;
             j=0;
             Threshold=0;
-            P = zeros(N - 1, 1);
-            C = zeros(N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
+            P = zeros(obj.N - 1, 1);
+            C = zeros(obj.N - 1, 2);%I do not esitimate (x1, x2, ... , xN), so N - 1 is enough.
             B=sum(log2(1-pe));
             alphaq=1;
             info_set = obj.rate_profiling;
-            frozen_bits = ones(1,N);
+            frozen_bits = ones(1,obj.N);
             frozen_bits(info_set) = 0;
-            delta=zeros(K,1);
-            mu=zeros(N,1);
-            u_esti = zeros(N,1);
-            v = zeros(N,1);
-            toDiverge = false;
+            delta=zeros(obj.k,1);
+            mu=zeros(obj.N,1);
+            bmetric = zeros(obj.k,1);
+            bmetric_cut = zeros(obj.k,1);
+            u_esti = zeros(obj.N,1);
+            v_esti = zeros(obj.N,1);
+            visited_before = false;
             %while not end of tree do
-            while i < N
+            while i < obj.N
                 P = update_P(obj,i,P,C,llr);
                 if frozen_bits(i+1) == 1
                     [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
                     if i==0
-                        mu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                        mu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(i+1));
                     else
-                        mu(i+1) =  mu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
+                        mu(i+1) =  mu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(i+1));
                     end
+                    curr_state(:,j+1)=c_state;
                     C = update_C(obj,i,C,u_esti(i+1));
                     i = i + 1;
                 else
@@ -435,129 +490,166 @@ classdef paccode
                     [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
                     [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
                     if i==0
-                        mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                        mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                        mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(i+1));
+                        mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(i+1));
                     else
-                        mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                        mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
+                        mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(i+1));
+                        mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(i+1));
                     end
                     if mu_left > mu_right
                         mu_max = mu_left;
                         mu_min = mu_right;
-                        v_max = 0;
-                        v_min = 1;
 
                     else
                         mu_max = mu_right;
                         mu_min = mu_left;
-                        v_max = 1;
-                        v_min = 0;
                     end
 
-                    if toDiverge == true
-                        mu_look = mu_min;
-                        v_look = v_min;
-                        delta(j+1)=1;
-                        toDiverge = false;
-                    else
-                        mu_look = mu_max;
-                        v_look = v_max;
-                    end
-
-                    breakncontinue = false;
-
-                    while mu_look < Threshold
-                        if j>0
-                            mu_pre = mu(info_set(j));
-                        else
-                            Threshold = Threshold - Delta;
-                            breakncontinue=true;
-                            break;
-                        end
-                        if mu_pre >= Threshold
-                            jj = j;
-                            while true
-                                jj = jj - 1;
-                                if jj>0
-                                    mu_pre = mu(info_set(jj));
-                                else
-                                    mu_pre = -realmax;
-                                end
-                                if(not(delta(jj+1) == 1 && mu_pre >= Threshold))
-                                    break;
-                                end
-                            end
-                            i_cur=info_set(j+1)-1;
-                            i_start = info_set(jj+1)-1;
-                            [P,C]= updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr);
-                            i = info_set(jj+1) - 1;
-                            j = jj;
-                            c_state = curr_state(:,j+1);
-
-                            if delta(j+1) == 0
-                                toDiverge = true;
-                                breakncontinue = true;
-                                break;
+                    if mu_max >= Threshold
+                        if visited_before == false
+                            if mu_left>mu_right
+                                v_esti(i+1)=0;
+                                u_esti(i+1)=u_left;
                             else
-                                Threshold = Threshold - Delta;
-                                breakncontinue = true;
-                                break;
+                                v_esti(i+1)=1;
+                                u_esti(i+1)=u_right;
                             end
+                            bmetric(j+1)=mu_max;
+                            bmetric_cut(j+1)=mu_min;
+                            mu(i+1)=mu_max;
+                            delta(j+1)=0;
+                            C=update_C(obj,i,C,u_esti(i+1));
+                            curr_state(:,j+1)=c_state;
+                            if(v_esti(i+1)==0)
+                                c_state=c_state_left;
+                            else
+                                c_state=c_state_right;
+                            end
+                            i=i+1;
+                            j=j+1;
                         else
-                            Threshold = Threshold - Delta;
-                            breakncontinue = true;
-                            break;
+                            if mu_min > Threshold
+                                if mu_left<mu_right
+                                    v_esti(i+1)=0;
+                                    u_esti(i+1)=u_left;
+                                else
+                                    v_esti(i+1)=1;
+                                    u_esti(i+1)=u_right;
+                                end
+                                bmetric(j+1)=mu_min;
+                                bmetric_cut(j+1)=mu_max;
+                                mu(i+1)=mu_min;
+                                C=update_C(obj,i,C,u_esti(i+1));
+                                curr_state(:,j+1)=c_state;
+                                if(v_esti(i+1)==0)
+                                    c_state=c_state_left;
+                                else
+                                    c_state=c_state_right;
+                                end
+                                delta(j+1)=1;
+                                i=i+1;
+                                j=j+1;
+                                visited_before=false;
+                            else
+                                if j==0
+                                    Threshold=Threshold-Delta;
+                                    visited_before=false;
+                                else
+                                    curr_state(:,j+1)=c_state;
+                                    [Threshold,j,visited_before,P,C] = moveback(obj,mu_min,bmetric,bmetric_cut,j,Threshold,delta,u_esti,P,C,llr,Delta);
+                                    if j==0
+                                        c_state=zeros(obj.conv_depth-1,1);
+                                    else
+                                        c_state = curr_state(:,j+1);
+                                    end
+                                    i = obj.rate_profiling(j+1)-1;
+                                end
+                            end
+                        end
+                    else
+                        if j == 0
+                            while mu_max < Threshold
+                                Threshold = Threshold - Delta;
+                            end
+                            visited_before=false;
+                        else
+                            curr_state(:,j+1) = c_state;
+                            [Threshold,j,visited_before,P,C] = moveback(obj,mu_max,bmetric,bmetric_cut,j,Threshold,delta,u_esti,P,C,llr,Delta);
+                            if j==0
+                                c_state=zeros(obj.conv_depth-1,1);
+                            else
+                                c_state = curr_state(:,j+1);
+                            end
+                            i = obj.rate_profiling(j+1)-1;
                         end
                     end
 
-                    if breakncontinue
-                        continue;
-                    end
 
-                    %move forward
-                    v(i+1)=v_look;
-                    if v_look == 0
-                        u_esti(i+1)=u_left;
-                    else
-                        u_esti(i+1)=u_right;
-                    end
-                    mu(i+1)=mu_look;
 
-                    curr_state(:,j+1)=c_state;
 
-                    if v(i+1)==0
-                        c_state=c_state_left;
-                    else
-                        c_state=c_state_right;
-                    end
-                    C = update_C(obj,i,C,u_esti(i+1));
 
-                    % Threshold Tighten
-                    mu_cur = mu(i+1);
-                    if j==0
-                        mu_pre = -realmax;
-                    else
-                        mu_pre = mu(info_set(j));
-                    end
-
-                    i = i+1;
-                    j = j+1;
-
-                    if mu_pre >= Threshold + Delta || delta(j)==1
-                        continue;
-                    end
-
-                    while mu_cur >= Threshold + Delta
-                        Threshold = Threshold + Delta;
-                    end
 
                 end
             end
-
-
-            d_esti = v(info_set);
+            d_esti = v_esti(info_set);
         end
 
+
+        function [Threshold,jj,visited_before,P,C] = moveback(obj,mu_cur,bmetric,bmetric_cut,j,Threshold,delta,u_esti,P,C,llr,Delta)
+            while 1
+                follow_other_branch = false;
+                if j>=1
+                    mu_pre = bmetric(j);
+                else
+                    mu_pre = 0;
+                end
+
+                jj=j;
+                for k = j-1:-1:0
+                    mu_pre = bmetric(k+1);
+                    if mu_pre >= Threshold 
+                        if bmetric_cut(k+1) >= Threshold
+                            jj=k;
+                            tmp = bmetric(k+1);
+                            bmetric(k+1)=bmetric_cut(k+1);
+                            bmetric_cut(k+1)=tmp;
+                            if delta(k+1) == 0
+                                follow_other_branch = true;
+                                break;
+                            elseif k==0
+                                follow_other_branch = true;
+                                jj = 0;
+                                break;
+                            end
+                        end
+                    end
+                    if k==0
+                        mu_pre = -100;
+                    end
+                end
+
+                i_cur = obj.rate_profiling(j+1)-1;
+                if(mu_pre >= Threshold) && (jj ~= 0 || follow_other_branch == true)
+                    i_start = obj.rate_profiling(jj+1)-1;
+                    [P,C]=updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr);
+
+                    if delta(jj+1) == 0
+                        visited_before = true;
+                        return;
+                    elseif jj == 0
+                        Threshold = Threshold - Delta;
+                        visited_before = false;
+                        return;
+                    end
+                else
+                    Threshold = Threshold - Delta;
+                    visited_before = false;
+                    jj=j;
+                    return;
+                end
+            end
+
+        end
 
         function [P,C]=updateLLRsPSs(obj,i_start,i_cur,u_esti,P,C,llr)
             if mod(i_cur,2) ~= 0

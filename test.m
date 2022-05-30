@@ -8,9 +8,9 @@ N = 128;
 k = 64;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
 snr_dB = 1.5;
-pac = paccode(N,k,g,0,'GA',3);
+pac = paccode(N,k,g,0,'RM-Polar',3);
 
-Pe=pac.get_PE_GA(3);
+Pe=zeros(N,1);
 sigma = 1/sqrt(2 * pac.R) * 10^(-snr_dB/20);
 
 % 
@@ -19,7 +19,7 @@ sigma = 1/sqrt(2 * pac.R) * 10^(-snr_dB/20);
 % [d]= pac.My_Fano_decoder(llr,Pe,1);
 
 error=0;
-for i=1:500
+for i=1:5000
     u= double(rand(k,1)>0.5);
     x = pac.encode(u);
     bpsk = 1 - 2 * x;
