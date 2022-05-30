@@ -416,67 +416,7 @@ classdef paccode
             mu=zeros(N,1);
             u_esti = zeros(N,1);
             v = zeros(N,1);
-            firstInformationIndex = info_set(1) - 1;
-            ThresholdUpdate=true;
-            % find first information bit
-            while i < firstInformationIndex
-                P = update_P(obj,i,P,C,llr);
-                [u_esti(i+1),c_state] = conv1bTrans(0,c_state,obj.g);
-                if i==0
-                    mu(i+1) =  B + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
-                else
-                    mu(i+1) =  mu(i) + m_func(P(1),u_esti(i+1))-alphaq*log2(1-pe(j+1));
-                end
-                C = update_C(obj,i,C,u_esti(i+1));
-                i = i + 1;
-            end
-
-            P = update_P(obj,i,P,C,llr);
-            % Look forward to best node
-            [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
-            [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
-            if i==0
-                mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-            else
-                mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-            end
-
-            if mu_left > mu_right
-                mu_max = mu_left;
-                v_max = 0;
-            else
-                mu_max = mu_right;
-                v_max = 1;
-            end
-
-            mu_look = mu_max;
-            v_look = v_max;
-
-            % update threshold
-            while mu_look < Threshold
-                Threshold = Threshold - Delta;
-            end
-
-            % move forward
-            v(i+1)=v_look;
-            if v_look == 0
-                u_esti(i+1)=u_left;
-            else
-                u_esti(i+1)=u_right;
-            end
-            mu(i+1)=mu_look;
-            curr_state(:,j+1)=c_state;
-            if v(i+1)==0
-                c_state=c_state_left;
-            else
-                c_state=c_state_right;
-            end
-            C = update_C(obj,i,C,u_esti(i+1));
-            i = i+1;
-            j = j+1;
-
+            toDiverge = false;
             %while not end of tree do
             while i < N
                 P = update_P(obj,i,P,C,llr);
@@ -490,22 +430,6 @@ classdef paccode
                     C = update_C(obj,i,C,u_esti(i+1));
                     i = i + 1;
                 else
-                    % if first visit then tighten threshold
-                    if j == 1
-                        mu_pre = -realmax;
-                        mu_cur = mu(info_set(j));
-                    else
-                        mu_pre = mu(info_set(j-1));
-                        mu_cur = mu(info_set(j));
-                    end
-                    if ThresholdUpdate == false
-                        ThresholdUpdate = true;
-                    elseif mu_pre < Threshold + Delta
-                        while mu_cur > Threshold
-                            Threshold = Threshold + Delta;
-                        end
-                        Threshold = Threshold - Delta;
-                    end
 
                     % look forward to best node
                     [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
@@ -519,20 +443,36 @@ classdef paccode
                     end
                     if mu_left > mu_right
                         mu_max = mu_left;
+                        mu_min = mu_right;
                         v_max = 0;
+                        v_min = 1;
+
                     else
                         mu_max = mu_right;
+                        mu_min = mu_left;
                         v_max = 1;
+                        v_min = 0;
                     end
 
-                    mu_look = mu_max;
-                    v_look = v_max;
+                    if toDiverge == true
+                        mu_look = mu_min;
+                        v_look = v_min;
+                        delta(j+1)=1;
+                        toDiverge = false;
+                    else
+                        mu_look = mu_max;
+                        v_look = v_max;
+                    end
+
+                    breakncontinue = false;
 
                     while mu_look < Threshold
                         if j>0
                             mu_pre = mu(info_set(j));
                         else
-                            mu_pre = -realmax;
+                            Threshold = Threshold - Delta;
+                            breakncontinue=true;
+                            break;
                         end
                         if mu_pre >= Threshold
                             jj = j;
@@ -555,79 +495,25 @@ classdef paccode
                             c_state = curr_state(:,j+1);
 
                             if delta(j+1) == 0
-                                P = update_P(obj,i,P,C,llr);
-                                [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
-                                [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
-                                if i==0
-                                    mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                                    mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-                                else
-                                    mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                                    mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-                                end
-
-                                if mu_left > mu_right
-                                    mu_min = mu_right;
-                                    v_min = 1;
-                                else
-                                    mu_min = mu_left;
-                                    v_min = 0;
-                                end
-
-                                mu_look = mu_min;
-                                v_look = v_min;
-                                delta(j+1) = 1;
+                                toDiverge = true;
+                                breakncontinue = true;
+                                break;
                             else
                                 Threshold = Threshold - Delta;
-                                ThresholdUpdate = false;
-                                P = update_P(obj,i,P,C,llr);
-                                [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
-                                [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
-                                if i==0
-                                    mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                                    mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-                                else
-                                    mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                                    mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-                                end
-
-                                if mu_left > mu_right
-                                    mu_max = mu_left;
-                                    v_max = 0;
-                                else
-                                    mu_max = mu_right;
-                                    v_max = 1;
-                                end
-
-                                mu_look = mu_max;
-                                v_look = v_max;
+                                breakncontinue = true;
+                                break;
                             end
                         else
                             Threshold = Threshold - Delta;
-                            ThresholdUpdate = false;
-                            P = update_P(obj,i,P,C,llr);
-                            [u_left,c_state_left] = conv1bTrans(0,c_state,obj.g);
-                            [u_right,c_state_right] = conv1bTrans(1,c_state,obj.g);
-                            if i==0
-                                mu_left =  B + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                                mu_right =  B + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-                            else
-                                mu_left =  mu(i) + m_func(P(1),u_left)-alphaq*log2(1-pe(j+1));
-                                mu_right =  mu(i) + m_func(P(1),u_right)-alphaq*log2(1-pe(j+1));
-                            end
-
-                            if mu_left > mu_right
-                                mu_max = mu_left;
-                                v_max = 0;
-                            else
-                                mu_max = mu_right;
-                                v_max = 1;
-                            end
-
-                            mu_look = mu_max;
-                            v_look = v_max;                            
+                            breakncontinue = true;
+                            break;
                         end
                     end
+
+                    if breakncontinue
+                        continue;
+                    end
+
                     %move forward
                     v(i+1)=v_look;
                     if v_look == 0
@@ -645,9 +531,25 @@ classdef paccode
                         c_state=c_state_right;
                     end
                     C = update_C(obj,i,C,u_esti(i+1));
+
+                    % Threshold Tighten
+                    mu_cur = mu(i+1);
+                    if j==0
+                        mu_pre = -realmax;
+                    else
+                        mu_pre = mu(info_set(j));
+                    end
+
                     i = i+1;
                     j = j+1;
 
+                    if mu_pre >= Threshold + Delta || delta(j)==1
+                        continue;
+                    end
+
+                    while mu_cur >= Threshold + Delta
+                        Threshold = Threshold + Delta;
+                    end
 
                 end
             end
