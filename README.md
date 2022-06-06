@@ -9,7 +9,7 @@ Arikan教授的PAC码的Matlab实现 （开发中）
 
 1. PAC codes' construction (RM Rules and GA method)
 2. PAC codes' (CRC-aided) SCL decoder
-3. PAC codes' List Viterbi decoder(need to be optimized)
+3. PAC codes' List Viterbi decoder
 4. PAC codes' Fano decoder
 5. Dispersion Bound
 
