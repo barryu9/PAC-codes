@@ -5,7 +5,7 @@ N = 128;
 k = 64;
 g = [1,0,1,1]; %c=[c_0,c_1,...,c_m]
 m = length(g)-1;
-snr_dB = 2.5:0.25:3;
+snr_dB = 3;
 pac = paccode(N, k, g, 0, 'RM-Polar', 3.5);
 n_iter = 1e5;
 frame_errors_count = zeros(1, length(snr_dB));
@@ -16,6 +16,14 @@ List_size = 4;
 L = 2^m*List_size;
 % Pe=pac.get_PE_GA(4);
 Pe = zeros(N, 1);
+u = [1 0 0 1 0 0 0 1 0 1 1 1 0 0 1 1 0 1 0 1 1 0 0 0 1 0 1 0 0 1 1 0 1 1 1 1 1 ...
+ 1 1 1 1 0 0 0 1 1 1 1 1 0 0 0 1 0 0 1 1 1 0 0 1 0 1 1];
+x=pac.encode(u);
+temp=zeros(1,N);
+for t=1:N
+tt=bitrevorder(t);
+temp(t)=x(tt);
+end
 
 for i = 1:length(snr_dB)
     for ii = 1:n_iter

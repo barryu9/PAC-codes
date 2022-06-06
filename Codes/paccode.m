@@ -80,7 +80,7 @@ classdef paccode
             info_indices = sort(sorted_indices(end-(obj.information_length + obj.crc_length)+1:end), 'ascend');
         end
 
-        function info_indices = RM_Polar_rate_profiling(obj, dsnr)
+        function [info_indices,info_indices_revorder] = RM_Polar_rate_profiling(obj, dsnr)
             %RM_Polar_rate_profiling RM-Polar码率构造
             %使用GA算法辅助，也可以使用BEC巴氏参数等效法
             %dsnr是GA的design snr（以dB为单位）
@@ -126,11 +126,11 @@ classdef paccode
             mask3 = mask(acceptable_bits,:);
             [~, mask3_sorted_indices] = sort(mask3(:, 2), 'descend');
             mask3 = mask3(mask3_sorted_indices, :);
+            info_indices = sort(mask3(1:obj.information_length + obj.crc_length,1), 'ascend')' + 1;
 
-            info_indices = sort(mask3(1:obj.information_length + obj.crc_length,1), 'ascend');
         end
 
-        function info_indices = GA_rate_profiling(obj, dsnr)
+        function  [info_indices,info_indices_revorder] = GA_rate_profiling(obj, dsnr)
             %GA_rate_profiling GA码率分配
             %dsnr是GA的design snr（以dB为单位）
             sigma = 1 / sqrt(2*obj.rate) * 10^(-dsnr / 20);
@@ -541,37 +541,39 @@ classdef paccode
             active_path = zeros(1, path_total);
             active_path(1) = 1;
             for t = 0:N - 1
-                for path_index = find(active_path==1)
-                    P(:, path_index) = update_P(obj, t, P(:, path_index), C(:, 2*path_index-1:2*path_index));
-                end
-
+                active_path_idx = find(active_path==1);
                 if frozen_bits(t+1) == 1
-                    for path_index = find(active_path==1)
+                    for path_index = active_path_idx
+                        P(:, path_index) = update_P(obj, t, P(:, path_index), C(:, 2*path_index-1:2*path_index));
                         v_esti(t+1, path_index) = 0;
                         [u_esti(t+1, path_index), c_state(:, path_index)] = conv1bTrans(0, c_state(:, path_index), obj.gen);
                         M(path_index) = M(path_index) - m_func(P(1, path_index), u_esti(t+1, path_index));
-                        C(:, 2*path_index-1:2*path_index) = update_C(obj, t, C(:, 2*path_index-1:2*path_index), u_esti(t+1, path_index));
 
                     end
                 else
                     state_branch = cell(1,2^m);
-                    for path_index = find(active_path==1)
-                        available_path = find(active_path == 0);
-                        copy_path_index = available_path(1);
+                    for path_index = active_path_idx
+                        P(:, path_index) = update_P(obj, t, P(:, path_index), C(:, 2*path_index-1:2*path_index));
+                        %find available path
+                        copy_path_index = 1;
+                        while active_path(copy_path_index) == 1
+                            copy_path_index=copy_path_index + 1;
+                        end
                         active_path(copy_path_index) = 1;
+                        %deepcopy
                         P(:, copy_path_index) = P(:, path_index);
                         C(:, 2*copy_path_index-1:2*copy_path_index) = C(:, 2*path_index-1:2*path_index);
                         c_state(:, copy_path_index) = c_state(:, path_index);
                         v_esti(:, copy_path_index) = v_esti(:, path_index);
                         u_esti(:, copy_path_index) = u_esti(:, path_index);
+                        M(copy_path_index)= M(path_index);
+                        %fork
                         v_esti(t+1, path_index) = 0;
                         v_esti(t+1, copy_path_index) = 1;
                         [u_esti(t+1, path_index), c_state(:, path_index)] = conv1bTrans(0, c_state(:, path_index), obj.gen);
                         [u_esti(t+1, copy_path_index), c_state(:, copy_path_index)] = conv1bTrans(1, c_state(:, copy_path_index), obj.gen);
-                        M(copy_path_index) = M(path_index) - m_func(P(1, copy_path_index), u_esti(t+1, copy_path_index));
+                        M(copy_path_index) = M(copy_path_index) - m_func(P(1, copy_path_index), u_esti(t+1, copy_path_index));
                         M(path_index) = M(path_index) - m_func(P(1, path_index), u_esti(t+1, path_index));
-                        C(:, 2*path_index-1:2*path_index) = update_C(obj, t, C(:, 2*path_index-1:2*path_index), u_esti(t+1, path_index));
-                        C(:, 2*copy_path_index-1:2*copy_path_index) = update_C(obj, t, C(:, 2*copy_path_index-1:2*copy_path_index), u_esti(t+1, copy_path_index));
                         s = binvec2dec(c_state(:, path_index)') + 1;
                         s_copy = binvec2dec(c_state(:, copy_path_index)') + 1;
                         state_branch{s}=[state_branch{s} path_index];
@@ -594,6 +596,12 @@ classdef paccode
 
                     end
                 end
+                active_path_idx = find(active_path==1);
+                for path_index = active_path_idx
+
+                    C(:, 2*path_index-1:2*path_index) = update_C(obj, t, C(:, 2*path_index-1:2*path_index), u_esti(t+1, path_index));
+                end
+
             end
 
             active_path = logical(active_path);
