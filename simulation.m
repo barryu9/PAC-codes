@@ -3,15 +3,17 @@ addpath(genpath('Codes/'))
 
 N = 128;
 k = 64;
-g = [1, 0, 1, 1, 0, 1, 1]; %c=[c_0,c_1,...,c_m]
-snr_dB = 3:0.25:3;
+g = [1,0,1,1]; %c=[c_0,c_1,...,c_m]
+m = length(g)-1;
+snr_dB = 2.5:0.25:3;
 pac = paccode(N, k, g, 0, 'RM-Polar', 3.5);
 n_iter = 1e5;
 frame_errors_count = zeros(1, length(snr_dB));
 bit_errors_count = zeros(1, length(snr_dB));
 FER = zeros(1, length(snr_dB));
 BER = zeros(1, length(snr_dB));
-L = 256;
+List_size = 4;
+L = 2^m*List_size;
 % Pe=pac.get_PE_GA(4);
 Pe = zeros(N, 1);
 
@@ -24,7 +26,7 @@ for i = 1:length(snr_dB)
         noise = randn(N, 1);
         y = bpsk + sigma * noise;
         llr = 2 / sigma^2 * y;
-        d = pac.SCL_decoder(llr, 256);
+        d = pac.Viterbi_decoder(llr, List_size);
         d = d(1:k);
         errs = sum(sum(u ~= d));
         if (errs > 0)

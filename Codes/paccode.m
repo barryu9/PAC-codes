@@ -528,6 +528,7 @@ classdef paccode
             N = obj.code_length;
             g = obj.gen;
             m = obj.conv_depth - 1;
+            obj.llr=llr;
             path_total = 2^m * L * 2;
             frozen_bits = ones(1, N);
             frozen_bits(obj.rate_profiling) = 0;
@@ -539,14 +540,13 @@ classdef paccode
             M = zeros(1, path_total);
             active_path = zeros(1, path_total);
             active_path(1) = 1;
-            available_path = 2:path_total;
             for t = 0:N - 1
+                for path_index = find(active_path==1)
+                    P(:, path_index) = update_P(obj, t, P(:, path_index), C(:, 2*path_index-1:2*path_index));
+                end
+
                 if frozen_bits(t+1) == 1
-                    for path_index = 1:path_total
-                        if (active_path(path_index) == 0)
-                            continue;
-                        end
-                        P(:, path_index) = update_P(obj, t, P(:, path_index), C(:, 2*path_index-1:2*path_index), llr);
+                    for path_index = find(active_path==1)
                         v_esti(t+1, path_index) = 0;
                         [u_esti(t+1, path_index), c_state(:, path_index)] = conv1bTrans(0, c_state(:, path_index), obj.gen);
                         M(path_index) = M(path_index) - m_func(P(1, path_index), u_esti(t+1, path_index));
@@ -554,19 +554,16 @@ classdef paccode
 
                     end
                 else
-                    path_activate = [];
-                    for path_index = 1:path_total
-                        if (active_path(path_index) == 0)
-                            continue;
-                        end
+                    state_branch = cell(1,2^m);
+                    for path_index = find(active_path==1)
+                        available_path = find(active_path == 0);
                         copy_path_index = available_path(1);
-                        available_path = available_path(2:end);
-                        path_activate = [path_activate, copy_path_index];
-                        P(:, path_index) = update_P(obj, t, P(:, path_index), C(:, 2*path_index-1:2*path_index), llr);
+                        active_path(copy_path_index) = 1;
                         P(:, copy_path_index) = P(:, path_index);
                         C(:, 2*copy_path_index-1:2*copy_path_index) = C(:, 2*path_index-1:2*path_index);
                         c_state(:, copy_path_index) = c_state(:, path_index);
                         v_esti(:, copy_path_index) = v_esti(:, path_index);
+                        u_esti(:, copy_path_index) = u_esti(:, path_index);
                         v_esti(t+1, path_index) = 0;
                         v_esti(t+1, copy_path_index) = 1;
                         [u_esti(t+1, path_index), c_state(:, path_index)] = conv1bTrans(0, c_state(:, path_index), obj.gen);
@@ -575,33 +572,26 @@ classdef paccode
                         M(path_index) = M(path_index) - m_func(P(1, path_index), u_esti(t+1, path_index));
                         C(:, 2*path_index-1:2*path_index) = update_C(obj, t, C(:, 2*path_index-1:2*path_index), u_esti(t+1, path_index));
                         C(:, 2*copy_path_index-1:2*copy_path_index) = update_C(obj, t, C(:, 2*copy_path_index-1:2*copy_path_index), u_esti(t+1, copy_path_index));
+                        s = binvec2dec(c_state(:, path_index)') + 1;
+                        s_copy = binvec2dec(c_state(:, copy_path_index)') + 1;
+                        state_branch{s}=[state_branch{s} path_index];
+                        state_branch{s_copy}=[state_branch{s_copy} copy_path_index];
                     end
 
-                    active_path(path_activate) = 1;
-
-                    path_kill = [];
                     if sum(active_path) > path_total / 2
-                        M_s = realmax * ones(L, 2^m);
-                        Retain_path = -1 * ones(L, 2^m);
-                        for path_index = 1:path_total
-                            if (active_path(path_index) == 0)
+                        for branch_index = 1:2^m
+                            num_branch = length(state_branch{branch_index});
+                            if num_branch == 0
                                 continue;
                             end
-                            s = binvec2dec(c_state(:, path_index)') + 1;
-                            [M_max, M_max_pos] = max(M_s(:, s));
-                            if (M(path_index) < M_max)
-                                if (Retain_path(M_max_pos, s) ~= -1)
-                                    path_kill = [path_kill, Retain_path(M_max_pos, s)];
-                                end
-
-                                Retain_path(M_max_pos, s) = path_index;
-                                M_s(M_max_pos, s) = M(path_index);
-                            else
-                                path_kill = [path_kill, path_index];
-                            end
+                            branch_path = state_branch{branch_index};
+                            M_branch = M(branch_path);
+                            [~,M_branch_sorted_indices] = sort(M_branch,'descend');
+                            indices_kill = M_branch_sorted_indices(1:num_branch/2);
+                            path_kill = branch_path(indices_kill);
+                            active_path(path_kill) = 0;
                         end
-                        available_path = [available_path, path_kill];
-                        active_path(path_kill) = 0;
+
                     end
                 end
             end
@@ -612,8 +602,6 @@ classdef paccode
             [~, M_active_sorted] = sort(M_active, 'ascend');
             v = v_active(:, M_active_sorted(1));
             d = v(obj.rate_profiling);
-
-
         end
 
         function P = update_P(obj, phi, P, C)
