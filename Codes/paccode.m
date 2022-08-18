@@ -31,6 +31,8 @@ classdef paccode
 
             obj.crc_length = crc_length;
             obj.conv_depth = length(g);
+            global operation_count_C;
+            global operation_count_P;
 
             if (strcmp(rate_profiling, 'RM'))
                 obj.rate_profiling = RM_rate_profiling(obj);
@@ -613,6 +615,7 @@ classdef paccode
         end
 
         function P = update_P(obj, phi, P, C)
+            global operation_count_P;
             N = obj.code_length;
             n = log2(N);
             layer = obj.llr_layer_vec(phi + 1);
@@ -622,6 +625,7 @@ classdef paccode
                     index_1 = obj.lambda_offset(n);
                     for beta = 0:index_1 - 1
                         P(beta + index_1) = sign(obj.llr(beta + 1)) * sign(obj.llr(beta + index_1 + 1)) * min(abs(obj.llr(beta + 1)), abs(obj.llr(beta + index_1 + 1)));
+                        operation_count_P=operation_count_P+1;
                     end
                     for i_layer = n - 2:-1:0
                         index_1 = obj.lambda_offset(i_layer+1);
@@ -629,6 +633,7 @@ classdef paccode
                         for beta = 0:index_1 - 1
                             P(beta + index_1) = sign(P(beta + index_2)) * ...
                                 sign(P(beta + index_1 + index_2)) * min(abs(P(beta + index_2)), abs(P(beta + index_1 + index_2)));
+                            operation_count_P=operation_count_P+1;
                         end
                     end
                 case N / 2
@@ -636,6 +641,8 @@ classdef paccode
                     for beta = 0:index_1 - 1
                         x_tmp = C(beta + index_1, 1);
                         P(beta + index_1) = (1 - 2 * x_tmp) * obj.llr(beta + 1) + obj.llr(beta + 1 + index_1);
+                        operation_count_P=operation_count_P+1;
+
                     end
                     for i_layer = n - 2:-1:0
                         index_1 = obj.lambda_offset(i_layer+1);
@@ -643,6 +650,8 @@ classdef paccode
                         for beta = 0:index_1 - 1
                             P(beta + index_1) = sign(P(beta + index_2)) * ...
                                 sign(P(beta + index_1 + index_2)) * min(abs(P(beta + index_2)), abs(P(beta + index_1 + index_2)));
+                            operation_count_P=operation_count_P+1;
+
                         end
                     end
                 otherwise
@@ -651,6 +660,8 @@ classdef paccode
                     for beta = 0:index_1 - 1
                         P(beta + index_1) = (1 - 2 * C(beta + index_1, 1)) * P(beta + index_2) + ...
                             P(beta + index_1 + index_2);
+                        operation_count_P=operation_count_P+1;
+
                     end
                     for i_layer = layer - 1:-1:0
                         index_1 = obj.lambda_offset(i_layer+1);
@@ -659,12 +670,15 @@ classdef paccode
                             P(beta + index_1) = sign(P(beta + index_2)) * ...
                                 sign(P(beta + index_1 + index_2)) * min(abs(P(beta + index_2)), ...
                                 abs(P(beta + index_1 + index_2)));
+                            operation_count_P=operation_count_P+1;
+
                         end
                     end
             end
         end
 
         function C = update_C(obj, phi, C, u)
+            global operation_count_C;
             N = obj.code_length;
             phi_mod_2 = mod(phi, 2);
             C(1, 1+phi_mod_2) = u;
@@ -676,6 +690,8 @@ classdef paccode
                     for beta = index_1:2 * index_1 - 1
                         C(beta + index_1, 2) = mod(C(beta, 1)+C(beta, 2), 2); %Left Column lazy copy
                         C(beta + index_2, 2) = C(beta, 2);
+                        operation_count_C=operation_count_C+1;
+
                     end
                 end
                 index_1 = obj.lambda_offset(layer+1);
@@ -683,6 +699,8 @@ classdef paccode
                 for beta = index_1:2 * index_1 - 1
                     C(beta + index_1, 1) = mod(C(beta, 1)+C(beta, 2), 2); %Left Column lazy copy
                     C(beta + index_2, 1) = C(beta, 2);
+                    operation_count_C=operation_count_C+1;
+
                 end
             end
         end
