@@ -1,19 +1,19 @@
 clear
 addpath(genpath('Codes/'))
 tic;
-N = 128;
-k = 64;
+N = 64;
+k = 32;
 g = [1,0,1,1,0,1,1];%c=[c_0,c_1,...,c_m]
-% snr_dB = 0:0.25:3;
 snr_dB = 3;
+% snr_dB = 3;
 
-Rate_Profiling_method = 'RM-Polar';
+Rate_Profiling_method = 'GA';
 dsnr = 3.5;
 crc_length = 0;
 
 pac = paccode(N,k,g,crc_length,Rate_Profiling_method,dsnr);
-% n_iter=[100,100,100,150,200,250,300,400,500,5000,5000,50000,50000];
-n_iter=[50000];
+n_iter=[60000];
+% n_iter=[50000];
 
 frame_errors_count=zeros(1,length(snr_dB));
 operation_count_C_c=zeros(1,length(snr_dB));
@@ -39,9 +39,9 @@ for i=1:length(snr_dB)
         noise = randn(N, 1);
         y = bpsk + sigma * noise;
         llr = 2/sigma^2*y;
-        %         d = pac.Fano_decoder(llr,pe,delta);
-        %         d = pac.SCL_decoder(llr,256);
-        d = pac.Viterbi_decoder(llr,4);
+        d = pac.Fano_decoder(llr,pe,delta);
+%         d = pac.SCL_decoder(llr,256);
+%         d = pac.Viterbi_decoder(llr,4);
 
         operation_count_C_c(i)=operation_count_C_c(i)+operation_count_C;
         operation_count_P_c(i)=operation_count_P_c(i)+operation_count_P;
@@ -58,9 +58,9 @@ for i=1:length(snr_dB)
 
 end
 
-avg_operation_count_C=operation_count_C./n_iter;
-avg_operation_count_P=operation_count_P./n_iter;
-
+avg_operation_count_C=operation_count_C_c./n_iter;
+avg_operation_count_P=operation_count_P_c./n_iter;
+avg_operation_count=avg_operation_count_C+avg_operation_count_P;
 FER=frame_errors_count./n_iter;
 BER=bit_errors_count./(n_iter.*k);
 save(['results\PAC_',datestr(datetime('now'),'yyyy-mm-dd-HH-MM'),'.mat'])

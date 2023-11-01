@@ -118,16 +118,18 @@ classdef paccode
                     mask2 = [mask2; mask(i, :)];
                 end
             end
-            [~, mask2_sorted_indices] = sort(mask2(:, 2), 'ascend');
+            [~, mask2_sorted_indices] = sort(mask2(:, 3), 'ascend');
             mask2 = mask2(mask2_sorted_indices, :);
             remainder = obj.code_length - (obj.information_length + obj.crc_length) - bitCnt;
             for i = 1:remainder
-                mask(mask2(i, 1), 4) = 0;
+                mask(mask2(i, 1)+1, 4) = 0;
             end
             acceptable_bits = logical(mask(:, 4));
+%             acceptable_bits=bitrevorder(acceptable_bits);
             mask3 = mask(acceptable_bits,:);
             [~, mask3_sorted_indices] = sort(mask3(:, 2), 'descend');
             mask3 = mask3(mask3_sorted_indices, :);
+            mask3(1:obj.information_length + obj.crc_length,1)=bitrevorder(mask3(1:obj.information_length + obj.crc_length,1));
             info_indices = sort(mask3(1:obj.information_length + obj.crc_length,1), 'ascend')' + 1;
 
         end
