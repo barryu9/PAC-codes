@@ -13,7 +13,6 @@ crc_length = 0;
 
 pac = paccode(N,k,g,crc_length,Rate_Profiling_method,dsnr);
 n_iter=[60000];
-% n_iter=[50000];
 
 frame_errors_count=zeros(1,length(snr_dB));
 operation_count_C_c=zeros(1,length(snr_dB));

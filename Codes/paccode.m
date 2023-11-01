@@ -578,8 +578,14 @@ classdef paccode
                         [u_esti(t+1, copy_path_index), c_state(:, copy_path_index)] = conv1bTrans(1, c_state(:, copy_path_index), obj.gen);
                         M(copy_path_index) = M(copy_path_index) - m_func(P(1, copy_path_index), u_esti(t+1, copy_path_index));
                         M(path_index) = M(path_index) - m_func(P(1, path_index), u_esti(t+1, path_index));
-                        s = binvec2dec(c_state(:, path_index)') + 1;
-                        s_copy = binvec2dec(c_state(:, copy_path_index)') + 1;
+                        s=0;
+                        s_copy=0;
+                        for i_s = 1:m
+                        s = s + c_state(i_s, path_index)*2^(i_s-1);
+                        s_copy = s_copy + c_state(i_s, copy_path_index)*2^(i_s-1);
+                        end
+                        s = s + 1;
+                        s_copy = s_copy + 1;
                         state_branch{s}=[state_branch{s} path_index];
                         state_branch{s_copy}=[state_branch{s_copy} copy_path_index];
                     end
